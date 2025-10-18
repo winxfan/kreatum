@@ -14,7 +14,8 @@ const demoPrompts: Record<string, string> = {
 };
 
 const demoModel: Model = {
-  id: 'demo-veo',
+  id: 'demo-veo', 
+  banner_image_url: './assets/banner.jpg',
   title: 'Veo 3.1',
   description: 'Image to Video demo',
   from: 'image',
@@ -31,7 +32,16 @@ const demoModel: Model = {
 export default function Home() {
   return (
     <Box sx={{ py: 6 }}>
-      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, alignItems: 'center', mb: 6 }}>
+      <Box 
+      sx={{ 
+        display: 'grid', 
+        gap: 2, 
+        gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, 
+        alignItems: 'center', 
+        mb: 6 
+      }}
+      style={{ backgroundImage: `url(${demoModel.banner_image_url})` }}
+      >
         <Box>
           <Typography variant="h3" sx={{ fontWeight: 800, mb: 1 }}>Neurolibrary</Typography>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>

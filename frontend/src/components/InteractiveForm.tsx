@@ -74,7 +74,7 @@ export default function InteractiveForm({ model, userId }: Props) {
             {['image','video','audio'].includes(model.from) && (
               <FileOrUrlInput accept={acceptByFrom(model.from)} label={model.from.toUpperCase()} name="input" />
             )}
-            <TextField name="prompt" label="Prompt" placeholder="Опишите желаемый результат" multiline rows={4} sx={{ mt: 2 }} />
+            <TextField name="prompt" label="Prompt" placeholder="Опишите желаемый результат" multiline rows={4} sx={{ mt: 2 }} fullWidth />
 
             {has(opt.durationOptions) && Array.isArray(opt.durationOptions) && opt.durationOptions!.length > 0 && (
               <TextField select fullWidth label="Duration" name="duration" sx={{ mt: 2 }} defaultValue={opt.durationOptions![0]}> 
@@ -101,7 +101,7 @@ export default function InteractiveForm({ model, userId }: Props) {
             )}
 
             {has(opt.negativePrompt) && (
-              <TextField name="negative_prompt" label="Negative Prompt" multiline rows={2} sx={{ mt: 2 }} />
+              <TextField name="negative_prompt" label="Negative Prompt" multiline rows={2} sx={{ mt: 2 }} fullWidth />
             )}
 
             {has(opt.generateAudio) && (
@@ -114,7 +114,7 @@ export default function InteractiveForm({ model, userId }: Props) {
               <FormControlLabel control={<Switch name="enhance_prompt" defaultChecked={!!opt.enhancePrompt} />} label="Enhance Prompt" />
             )}
 
-            <Button type="submit" variant="contained" disabled={loading} sx={{ mt: 1 }}>Запустить</Button>
+            <Button type="submit" variant="contained" disabled={loading} sx={{ mt: 1 }} fullWidth>Запустить</Button>
           </Box>
 
           <Box>
