@@ -2,18 +2,30 @@ import Link from 'next/link';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
 import PublicIcon from '@mui/icons-material/Public';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import TextField from '@mui/material/TextField';
-import MenuItem from '@mui/material/MenuItem';
+import InteractiveForm from '@/components/InteractiveForm';
+import type { Model } from '@/types/model';
 
 const demoPrompts: Record<string, string> = {
   'image-to-video': 'A graceful ballerina dancing outside a circus tent',
   'text-to-image': 'A cinematic macro photo of a dewdrop on a leaf',
   'image-to-image': 'Remix this portrait into cyberpunk neon style',
+};
+
+const demoModel: Model = {
+  id: 'demo-veo',
+  title: 'Veo 3.1',
+  description: 'Image to Video demo',
+  from: 'image',
+  to: 'video',
+  options: {
+    durationOptions: [3,5,10],
+    resolutionOptions: ['720p','1080p'],
+    generateAudio: false,
+    aspectRatioOptions: ['16:9','9:16','1:1'],
+    negativePrompt: '',
+  }
 };
 
 export default function Home() {
@@ -35,19 +47,10 @@ export default function Home() {
           </Box>
         </Box>
         <Box>
-          <Card>
-            <CardContent>
-              <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 700 }}>Быстрый playground</Typography>
-              <TextField select label="Режим" fullWidth defaultValue="image-to-video" sx={{ mb: 2 }}>
-                <MenuItem value="image-to-video">image-to-video</MenuItem>
-                <MenuItem value="text-to-image">text-to-image</MenuItem>
-                <MenuItem value="image-to-image">image-to-image</MenuItem>
-              </TextField>
-              <TextField multiline rows={3} label="Prompt" fullWidth defaultValue={demoPrompts['image-to-video']} sx={{ mb: 2 }} />
-              <Button variant="contained">Запустить демо</Button>
-            </CardContent>
-          </Card>
         </Box>
+      </Box>
+      <Box>
+        <InteractiveForm model={demoModel} />
       </Box>
     </Box>
   );
