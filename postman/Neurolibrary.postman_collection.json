@@ -1,0 +1,54 @@
+{
+  "info": {
+    "name": "Neurolibrary API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "0.1.0"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {"method": "GET", "url": "{{baseUrl}}/health"}
+    },
+    {
+      "name": "Models",
+      "item": [
+        {"name": "List", "request": {"method": "GET", "url": "{{baseUrl}}/api/v1/models"}},
+        {"name": "Get", "request": {"method": "GET", "url": "{{baseUrl}}/api/v1/models/{{model_id}}"}},
+        {"name": "Run", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/api/v1/models/{{model_id}}/run", "body": {"mode": "raw", "raw": "{\n  \"prompt\": \"A ballerina\",\n  \"audio\": true,\n  \"duration_seconds\": 5,\n  \"count\": 1\n}"}}}
+      ]
+    },
+    {
+      "name": "Jobs",
+      "item": [
+        {"name": "Status", "request": {"method": "GET", "url": "{{baseUrl}}/api/v1/jobs/{{job_id}}"}}
+      ]
+    },
+    {
+      "name": "Transactions",
+      "item": [
+        {"name": "List", "request": {"method": "GET", "url": "{{baseUrl}}/api/v1/transactions"}},
+        {"name": "Checkout", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/api/v1/transactions/checkout", "body": {"mode": "raw", "raw": "{\n  \"amount_rub\": 199\n}"}}}
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {"name": "OAuth Login", "request": {"method": "GET", "url": "{{baseUrl}}/api/v1/auth/oauth/{{provider}}/login"}},
+        {"name": "OAuth Callback", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/v1/auth/oauth/{{provider}}/callback?code=stub", "host": ["{{baseUrl}}"], "path": ["api","v1","auth","oauth","{{provider}}","callback"], "query": [{"key": "code", "value": "stub"}]}}}
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {"name": "YooKassa", "request": {"method": "POST", "url": "{{baseUrl}}/api/v1/webhooks/yookassa"}}
+      ]
+    }
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8000"},
+    {"key": "model_id", "value": "stub"},
+    {"key": "provider", "value": "yandex"},
+    {"key": "job_id", "value": "stub-job"}
+  ]
+}
+

@@ -1,0 +1,27 @@
+from fastapi import FastAPI, APIRouter
+from fastapi.responses import ORJSONResponse
+
+from app.core.config import settings
+from app.api.v1 import auth, models, runs, jobs, transactions, users, webhooks
+
+app = FastAPI(
+    title="Neurolibrary API",
+    version="0.1.0",
+    default_response_class=ORJSONResponse,
+)
+
+api_v1 = APIRouter(prefix="/api/v1")
+api_v1.include_router(auth.router)
+api_v1.include_router(models.router)
+api_v1.include_router(runs.router)
+api_v1.include_router(jobs.router)
+api_v1.include_router(transactions.router)
+api_v1.include_router(users.router)
+api_v1.include_router(webhooks.router)
+
+app.include_router(api_v1)
+
+
+@app.get("/health")
+def healthcheck() -> dict:
+    return {"status": "ok", "env": settings.environment}
