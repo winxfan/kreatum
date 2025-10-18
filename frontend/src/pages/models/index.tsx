@@ -1,7 +1,12 @@
 import { GetServerSideProps } from 'next';
 import Link from 'next/link';
-import { Card, List, Typography } from 'antd';
-import { getModels, API_BASE } from '@/lib/api';
+import Box from '@mui/material/Box';
+import Card from '@mui/material/Card';
+import CardContent from '@mui/material/CardContent';
+import CardActionArea from '@mui/material/CardActionArea';
+import Typography from '@mui/material/Typography';
+import Chip from '@mui/material/Chip';
+import { API_BASE } from '@/lib/api';
 
 export const getServerSideProps: GetServerSideProps = async () => {
   try {
@@ -15,22 +20,28 @@ export const getServerSideProps: GetServerSideProps = async () => {
 
 export default function ModelsPage({ items }: { items: any[] }) {
   return (
-    <main style={{ padding: 24 }}>
-      <Typography.Title level={2} style={{ color: '#fff' }}>Модели</Typography.Title>
-      <List
-        grid={{ gutter: 16, column: 3 }}
-        dataSource={items}
-        renderItem={(item) => (
-          <List.Item>
-            <Link href={`/model/${item.id || 'stub'}`}>
-              <Card title={item.title || 'Veo 3.1'}>
-                {item.description || 'Image → Video'}
-              </Card>
-            </Link>
-          </List.Item>
-        )}
-      />
-    </main>
+    <Box>
+      <Typography variant="h4" sx={{ mb: 2, fontWeight: 700 }}>Модели</Typography>
+      <Box sx={{
+        display: 'grid',
+        gap: 2,
+        gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' },
+      }}>
+        {items.map((item) => (
+          <Card key={item.id || item.title}>
+            <CardActionArea component={Link as any} href={`/model/${item.id || 'stub'}`}>
+              <CardContent>
+                <Typography variant="h6">{item.title || 'Veo 3.1'}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  {item.description || 'Image → Video'}
+                </Typography>
+                {item.category && <Chip label={item.category} size="small" sx={{ mt: 1 }} />}
+              </CardContent>
+            </CardActionArea>
+          </Card>
+        ))}
+      </Box>
+    </Box>
   );
 }
 

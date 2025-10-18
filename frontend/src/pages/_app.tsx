@@ -1,21 +1,31 @@
 import type { AppProps } from 'next/app';
-import { ConfigProvider, theme } from 'antd';
+import { CacheProvider, EmotionCache } from '@emotion/react';
+import { ThemeProvider, CssBaseline } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import 'antd/dist/reset.css';
+import createEmotionCache from '@/createEmotionCache';
+import theme from '@/theme';
+import Layout from '@/components/Layout';
 
+const clientSideEmotionCache = createEmotionCache();
 const queryClient = new QueryClient();
 
-export default function MyApp({ Component, pageProps }: AppProps) {
+export interface MyAppProps extends AppProps {
+  emotionCache?: EmotionCache;
+}
+
+export default function MyApp(props: MyAppProps) {
+  const { Component, pageProps, emotionCache = clientSideEmotionCache } = props;
   return (
-    <QueryClientProvider client={queryClient}>
-      <ConfigProvider
-        theme={{
-          algorithm: theme.darkAlgorithm,
-        }}
-      >
-        <Component {...pageProps} />
-      </ConfigProvider>
-    </QueryClientProvider>
+    <CacheProvider value={emotionCache}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <QueryClientProvider client={queryClient}>
+          <Layout>
+            <Component {...pageProps} />
+          </Layout>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </CacheProvider>
   );
 }
 

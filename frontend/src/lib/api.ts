@@ -34,3 +34,8 @@ export async function getJob(jobId: string) {
   return json<any>(res);
 }
 
+export async function getUser() {
+  const res = await fetch(`${API_BASE}/api/v1/auth/me`, { credentials: 'include' as any });
+  return json<any>(res);
+}
+
