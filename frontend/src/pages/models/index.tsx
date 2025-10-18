@@ -7,6 +7,10 @@ import CardActionArea from '@mui/material/CardActionArea';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import { API_BASE } from '@/lib/api';
+import TextField from '@mui/material/TextField';
+import InputAdornment from '@mui/material/InputAdornment';
+import SearchIcon from '@mui/icons-material/Search';
+import CategoryTag from '@/components/CategoryTag';
 
 export const getServerSideProps: GetServerSideProps = async () => {
   try {
@@ -22,6 +26,9 @@ export default function ModelsPage({ items }: { items: any[] }) {
   return (
     <Box>
       <Typography variant="h4" sx={{ mb: 2, fontWeight: 700 }}>Модели</Typography>
+      <Box sx={{ mb: 2 }}>
+        <TextField fullWidth placeholder="Поиск моделей" InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }} />
+      </Box>
       <Box sx={{
         display: 'grid',
         gap: 2,
@@ -35,7 +42,13 @@ export default function ModelsPage({ items }: { items: any[] }) {
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                   {item.description || 'Image → Video'}
                 </Typography>
-                {item.category && <Chip label={item.category} size="small" sx={{ mt: 1 }} />}
+                {item.from && item.to ? (
+                  <Box sx={{ mt: 1 }}>
+                    <CategoryTag from={item.from} to={item.to} />
+                  </Box>
+                ) : (
+                  item.category && <Chip label={item.category} size="small" sx={{ mt: 1 }} />
+                )}
               </CardContent>
             </CardActionArea>
           </Card>

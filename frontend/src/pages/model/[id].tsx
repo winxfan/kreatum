@@ -10,6 +10,7 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Alert from '@mui/material/Alert';
+import CategoryTag from '@/components/CategoryTag';
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const { id } = ctx.query as { id: string };
@@ -48,8 +49,20 @@ export default function ModelPage({ model }: { model: any }) {
 
   return (
     <>
-      <Typography variant="h4" sx={{ mb: 2, fontWeight: 700 }}>{model.title}</Typography>
-      <Card sx={{ maxWidth: 760 }}>
+      <Box sx={{
+        p: 3,
+        mb: 3,
+        borderRadius: 2,
+        background: model.banner_image_url ? `url(${model.banner_image_url}) center/cover` : 'linear-gradient(90deg,#1a1d24,#111318)'
+      }}>
+        <CategoryTag from={model.from || 'image'} to={model.to || 'video'} />
+        <Typography variant="h3" sx={{ fontWeight: 800, mt: 1 }}>{model.title}</Typography>
+        <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 720 }}>
+          {model.description}
+        </Typography>
+        <Button variant="contained" sx={{ mt: 2 }} href="#playground">Попробовать сейчас</Button>
+      </Box>
+      <Card id="playground" sx={{ maxWidth: 960 }}>
         <CardContent>
           <Box component="form" onSubmit={(e: React.FormEvent<HTMLFormElement>) => {
             e.preventDefault();
