@@ -134,10 +134,10 @@ export default function InteractiveForm({ model, userId }: Props) {
                 Результат появится здесь после генерации
               </Box>
             )}
-            <Button variant="outlined" sx={{ mt: 2 }} disabled={!resultUrl}>Скачать</Button>
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
               Стоимость зависит от параметров модели и длительности
             </Typography>
+            <Button variant="outlined" sx={{ mt: 2 }} disabled={!resultUrl} fullWidth>Скачать</Button>
             {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
           </Box>
         </Box>

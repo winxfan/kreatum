@@ -6,16 +6,11 @@ import CreditCardIcon from '@mui/icons-material/CreditCard';
 import PublicIcon from '@mui/icons-material/Public';
 import InteractiveForm from '@/components/InteractiveForm';
 import type { Model } from '@/types/model';
-
-const demoPrompts: Record<string, string> = {
-  'image-to-video': 'A graceful ballerina dancing outside a circus tent',
-  'text-to-image': 'A cinematic macro photo of a dewdrop on a leaf',
-  'image-to-image': 'Remix this portrait into cyberpunk neon style',
-};
+import banner from '@/assets/banner.jpg';
 
 const demoModel: Model = {
   id: 'demo-veo', 
-  banner_image_url: './assets/banner.jpg',
+  banner_image_url: banner.src,
   title: 'Veo 3.1',
   description: 'Image to Video demo',
   from: 'image',
@@ -31,16 +26,28 @@ const demoModel: Model = {
 
 export default function Home() {
   return (
-    <Box sx={{ py: 6 }}>
-      <Box 
-      sx={{ 
-        display: 'grid', 
-        gap: 2, 
-        gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, 
-        alignItems: 'center', 
-        mb: 6 
-      }}
-      style={{ backgroundImage: `url(${demoModel.banner_image_url})` }}
+    <div>
+      <Box
+        style={{
+          backgroundImage: `url(${demoModel.banner_image_url})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          borderRadius: 25,
+        }}
+      >
+        <Box 
+          sx={{
+            display: 'grid', 
+            gap: 2, 
+            alignItems: 'center', 
+            p: 6,
+            mb: 6,
+            height: '600px',
+          }}
+          style={{
+            background: 'linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.25) 40%, rgba(0, 0, 0, 0.9) 100%)'
+          }}
       >
         <Box>
           <Typography variant="h3" sx={{ fontWeight: 800, mb: 1 }}>Neurolibrary</Typography>
@@ -57,12 +64,16 @@ export default function Home() {
           </Box>
         </Box>
         <Box>
-        </Box>
       </Box>
+      
+      </Box>
+      
+    </Box>
+
       <Box>
         <InteractiveForm model={demoModel} />
       </Box>
-    </Box>
+    </div>
   );
 }
 
