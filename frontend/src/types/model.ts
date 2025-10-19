@@ -18,6 +18,8 @@ export interface Model {
   from: IOType;
   to: IOType;
   options?: ModelOptions;
+  hint?: string | null;
+  max_file_count?: number | null;
 }
 
 

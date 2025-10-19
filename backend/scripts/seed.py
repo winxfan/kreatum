@@ -40,6 +40,15 @@ def seed():
             format_from="image",
             format_to="video",
             banner_image_url=None,
+            hint="Лучше работает с высококачественными изображениями 1024x1024 и детальным prompt",
+            options={
+                "durationOptions": [5, 10, 15],
+                "resolutionOptions": ["720p", "1080p"],
+                "aspectRatioOptions": ["16:9", "9:16", "1:1"],
+                "generateAudio": True,
+                "negativePrompt": True
+            },
+            max_file_count=5,
         )
 
         # Tariffs

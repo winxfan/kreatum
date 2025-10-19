@@ -35,6 +35,10 @@ class Model(Base):
     format_to = Column(Text, nullable=False)
     banner_image_url = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # new
+    hint = Column(Text)
+    options = Column(JSON)  # хранение опций UI
+    max_file_count = Column(Numeric(10, 0))
 
 
 class User(Base):
@@ -99,6 +103,20 @@ class Result(Base):
     s3_url = Column(Text)
     meta = Column(JSON)
     is_ok = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # new: references to Data
+    input = Column(JSON)  # массив ссылок на data.id (денормализация для быстрого доступа)
+    output = Column(JSON)
+
+
+class Data(Base):
+    __tablename__ = "data"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
+    type = Column(Text, nullable=False)  # image | audio | video | text
+    s3_url = Column(Text, nullable=False)
+    public_s3_url = Column(Text)
+    expired_in = Column(Numeric(20, 0))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
