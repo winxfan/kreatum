@@ -1,15 +1,9 @@
 import { GetServerSideProps } from 'next';
 import { useState } from 'react';
 import { API_BASE } from '@/lib/api';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
-import TextField from '@mui/material/TextField';
-import Switch from '@mui/material/Switch';
-import FormControlLabel from '@mui/material/FormControlLabel';
 import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
-import Alert from '@mui/material/Alert';
 import CategoryTag from '@/components/CategoryTag';
 import InteractiveForm from '@/components/InteractiveForm';
 
