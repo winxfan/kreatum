@@ -5,8 +5,10 @@ import MovieIcon from '@mui/icons-material/Movie';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
 import AudiotrackIcon from '@mui/icons-material/Audiotrack';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import DataObjectIcon from '@mui/icons-material/DataObject';
+import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 
-type IO = 'image' | 'video' | 'text' | 'audio';
+type IO = 'image' | 'video' | 'text' | 'audio' | 'json' | 'speech';
 
 function getIcon(kind: IO) {
   switch (kind) {
@@ -14,18 +16,30 @@ function getIcon(kind: IO) {
     case 'video': return <MovieIcon fontSize="small" />;
     case 'text': return <TextFieldsIcon fontSize="small" />;
     case 'audio': return <AudiotrackIcon fontSize="small" />;
+    case 'json': return <DataObjectIcon fontSize="small" />;
+    case 'speech': return <RecordVoiceOverIcon fontSize="small" />;
     default: return <SmartToyIcon fontSize="small" />;
   }
 }
 
 function getColors(from: IO, to: IO) {
   const map: Record<string, { bg: string; color: string; border: string }> = {
-    'image:text': { bg: 'rgba(124,77,255,0.15)', color: '#b39ddb', border: 'rgba(124,77,255,0.4)' },
-    'image:video': { bg: 'rgba(0,229,255,0.12)', color: '#80deea', border: 'rgba(0,229,255,0.4)' },
-    'text:image': { bg: 'rgba(255,214,0,0.12)', color: '#ffe082', border: 'rgba(255,214,0,0.4)' },
-    'text:video': { bg: 'rgba(0,191,165,0.12)', color: '#80cbc4', border: 'rgba(0,191,165,0.4)' },
-    'video:image': { bg: 'rgba(255,64,129,0.12)', color: '#f48fb1', border: 'rgba(255,64,129,0.4)' },
-    'audio:text': { bg: 'rgba(0,229,255,0.12)', color: '#80deea', border: 'rgba(0,229,255,0.4)' },
+    // Audio → *
+    'audio:audio': { bg: 'rgba(255,152,0,0.12)', color: '#ffcc80', border: 'rgba(255,152,0,0.4)' },
+    'audio:video': { bg: 'rgba(255,152,0,0.12)', color: '#ffcc80', border: 'rgba(255,152,0,0.4)' },
+    'audio:text': { bg: 'rgba(255,152,0,0.12)', color: '#ffcc80', border: 'rgba(255,152,0,0.4)' },
+    // Image → *
+    'image:image': { bg: 'rgba(0,200,83,0.12)', color: '#a5d6a7', border: 'rgba(0,200,83,0.4)' },
+    'image:json':  { bg: 'rgba(0,200,83,0.12)', color: '#a5d6a7', border: 'rgba(0,200,83,0.4)' },
+    'image:video': { bg: 'rgba(0,200,83,0.12)', color: '#a5d6a7', border: 'rgba(0,200,83,0.4)' },
+    // Text → *
+    'text:audio':  { bg: 'rgba(124,77,255,0.15)', color: '#b39ddb', border: 'rgba(124,77,255,0.4)' },
+    'text:image':  { bg: 'rgba(124,77,255,0.15)', color: '#b39ddb', border: 'rgba(124,77,255,0.4)' },
+    'text:speech': { bg: 'rgba(124,77,255,0.15)', color: '#b39ddb', border: 'rgba(124,77,255,0.4)' },
+    'text:video':  { bg: 'rgba(124,77,255,0.15)', color: '#b39ddb', border: 'rgba(124,77,255,0.4)' },
+    // Video → *
+    'video:audio': { bg: 'rgba(0,229,255,0.12)', color: '#80deea', border: 'rgba(0,229,255,0.4)' },
+    'video:video': { bg: 'rgba(0,229,255,0.12)', color: '#80deea', border: 'rgba(0,229,255,0.4)' },
   };
   return map[`${from}:${to}`] || { bg: 'rgba(124,77,255,0.12)', color: '#b39ddb', border: 'rgba(124,77,255,0.4)' };
 }
