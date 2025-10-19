@@ -104,9 +104,9 @@ class Result(Base):
     meta = Column(JSON)
     is_ok = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    # new: references to Data
-    input = Column(JSON)  # массив ссылок на data.id (денормализация для быстрого доступа)
-    output = Column(JSON)
+    # массив UUID (строк) записей Data
+    input = Column(JSON)  # list[str]
+    output = Column(JSON)  # list[str]
 
 
 class Data(Base):

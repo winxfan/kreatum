@@ -11,12 +11,15 @@ import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import Divider from '@mui/material/Divider';
 import Collapse from '@mui/material/Collapse';
+import IconButton from '@mui/material/IconButton';
+import DeleteForeverRoundedIcon from '@mui/icons-material/DeleteForeverRounded';
+import InsertDriveFileRoundedIcon from '@mui/icons-material/InsertDriveFileRounded';
 import { API_BASE } from '@/lib/api';
 import type { Model, IOType } from '@/types/model';
 
 type Props = { model: Model; userId?: string | null };
 
-type PreviewItem = { url: string; type: IOType; name: string };
+type PreviewItem = { url: string; type: IOType; name: string; index: number };
 
 function acceptByFrom(from: IOType) {
   if (from === 'image') return 'image/*';
@@ -32,23 +35,18 @@ export default function InteractiveForm({ model, userId }: Props) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [files, setFiles] = useState<File[]>([]);
-  const [inputUrl, setInputUrl] = useState('');
 
   const maxFileCount = model.max_file_count ?? 1;
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const previews: PreviewItem[] = useMemo(() => {
-    const arr: PreviewItem[] = [];
-    for (const f of files) {
-      const url = URL.createObjectURL(f);
-      const kind: IOType = model.from;
-      arr.push({ url, type: kind, name: f.name });
-    }
-    if (inputUrl) {
-      arr.push({ url: inputUrl, type: model.from, name: inputUrl });
-    }
-    return arr;
-  }, [files, inputUrl, model.from]);
+    return files.map((f, idx) => ({ url: URL.createObjectURL(f), type: model.from, name: f.name, index: idx }));
+  }, [files, model.from]);
+
+  const durationOptions = useMemo(() => {
+    const opt = model.options?.durationOptions;
+    return Array.isArray(opt) && opt.length > 0 ? opt : [5, 10, 15];
+  }, [model.options?.durationOptions]);
 
   const onDrop = (ev: React.DragEvent<HTMLDivElement>) => {
     ev.preventDefault();
@@ -70,7 +68,9 @@ export default function InteractiveForm({ model, userId }: Props) {
     setFiles((prev) => [...prev, ...filtered].slice(0, maxFileCount));
   };
 
-  const clearFiles = () => setFiles([]);
+  const removeFileAt = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -81,9 +81,8 @@ export default function InteractiveForm({ model, userId }: Props) {
       // На данном этапе отправляем JSON-заглушку; позже заменим на multipart с файлами
       const body: Record<string, any> = {
         prompt: (e.currentTarget.elements.namedItem('prompt') as HTMLInputElement)?.value,
-        duration_seconds: Number((e.currentTarget.elements.namedItem('duration_seconds') as HTMLInputElement)?.value || 5),
+        duration_seconds: Number((e.currentTarget.elements.namedItem('duration_seconds') as HTMLInputElement)?.value || durationOptions[0]),
         audio: (e.currentTarget.elements.namedItem('audio') as HTMLInputElement)?.checked || false,
-        input_urls: inputUrl ? [inputUrl] : [],
         input_files_count: files.length,
       };
       if (userId) body.user_id = userId;
@@ -126,12 +125,13 @@ export default function InteractiveForm({ model, userId }: Props) {
                 bgcolor: 'background.default',
               }}
             >
+              <InsertDriveFileRoundedIcon color="action" sx={{ fontSize: 40, mb: 1 }} />
               <Typography variant="body1" sx={{ mb: 1 }}>
                 Для добавления файла кликните по области или перетащите сюда
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Подсказка: перетащите файлы с компьютера, изображения со страниц,
-                вставьте из буфера обмена (Ctrl/Cmd+V) или укажите URL.
+                вставьте из буфера обмена (Ctrl/Cmd+V).
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
                 Допустимые типы: jpg, jpeg, png, webp, gif, avif
@@ -150,18 +150,9 @@ export default function InteractiveForm({ model, userId }: Props) {
               />
             </Box>
 
-            <TextField
-              label="URL источника"
-              placeholder="https://..."
-              value={inputUrl}
-              onChange={(e) => setInputUrl(e.target.value)}
-              fullWidth
-              sx={{ mt: 2 }}
-            />
-
-            <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {previews.map((p, idx) => (
-                <Box key={`${p.url}-${idx}`} sx={{ width: 140 }}>
+            <Box sx={{ mt: 2, display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+              {previews.map((p) => (
+                <Box key={`${p.url}-${p.index}`} sx={{ width: 148, position: 'relative' }}>
                   {p.type === 'image' && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={p.url} alt={p.name} style={{ width: '100%', borderRadius: 8 }} />
@@ -172,18 +163,15 @@ export default function InteractiveForm({ model, userId }: Props) {
                   {p.type === 'audio' && (
                     <audio src={p.url} style={{ width: '100%' }} controls />
                   )}
+                  <IconButton aria-label="Удалить" onClick={() => removeFileAt(p.index)} size="small" color="error" sx={{ position: 'absolute', top: -10, right: -10, bgcolor: 'background.paper', boxShadow: 1 }}>
+                    <DeleteForeverRoundedIcon fontSize="small" />
+                  </IconButton>
                   <Typography variant="caption" color="text.secondary" title={p.name}>
                     {p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name}
                   </Typography>
                 </Box>
               ))}
             </Box>
-
-            {files.length > 0 && (
-              <Button color="inherit" size="small" onClick={clearFiles} sx={{ mt: 1 }}>
-                Очистить файлы
-              </Button>
-            )}
 
             <TextField
               name="prompt"
@@ -194,19 +182,18 @@ export default function InteractiveForm({ model, userId }: Props) {
             />
 
             <TextField
+              select
               name="duration_seconds"
               label="Длительность, сек" required
-              type="number"
-              inputProps={{ min: 1, max: 60 }}
-              defaultValue={5}
+              defaultValue={durationOptions[0]}
               sx={{ mt: 2 }} fullWidth
-            />
+            >
+              {durationOptions.map((n) => (
+                <MenuItem key={String(n)} value={n}>{n}s</MenuItem>
+              ))}
+            </TextField>
 
             <FormControlLabel control={<Switch name="audio" />} label="Сгенерировать аудио" sx={{ mt: 1 }} />
-
-            <Button variant="outlined" sx={{ mt: 2 }} disabled={!resultUrl} fullWidth>
-              Скачать
-            </Button>
 
             <Divider sx={{ my: 2 }} />
             <Button size="small" onClick={() => setAdvancedOpen((v) => !v)}>
@@ -214,7 +201,7 @@ export default function InteractiveForm({ model, userId }: Props) {
             </Button>
             <Collapse in={advancedOpen} timeout="auto" unmountOnExit>
               <Box sx={{ mt: 2 }}>
-                {/* Примеры дополнительных настроек, скрыты по умолчанию */}
+                {/* Дополнительные настройки (скрыты по умолчанию) */}
                 {Array.isArray(opt.durationOptions) && opt.durationOptions.length > 0 && (
                   <TextField select fullWidth label="Длительность (предустановки)" name="duration" sx={{ mt: 2 }} defaultValue={opt.durationOptions[0]}>
                     {opt.durationOptions.map((n) => (
@@ -282,7 +269,9 @@ export default function InteractiveForm({ model, userId }: Props) {
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
               Стоимость зависит от параметров модели и длительности
             </Typography>
-            <Button variant="outlined" sx={{ mt: 2 }} disabled={!resultUrl} fullWidth>Скачать</Button>
+            <Button variant="outlined" sx={{ mt: 2 }} disabled={!resultUrl} fullWidth>
+              Скачать
+            </Button>
             {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
           </Box>
         </Box>
