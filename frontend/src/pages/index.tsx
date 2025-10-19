@@ -50,7 +50,7 @@ export default function Home() {
           }}
       >
         <Box>
-          <Typography variant="h3" sx={{ fontWeight: 800, mb: 1 }}>Neurolibrary</Typography>
+          <Typography variant="h3" sx={{ fontWeight: 800, mb: 1 }}>Креатум - все нейросети в одном месте</Typography>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
             Агрегатор нейромоделей: фото, видео и текст в одной платформе.
           </Typography>
@@ -63,12 +63,8 @@ export default function Home() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><PublicIcon fontSize="small" /> Работает без VPN</Box>
           </Box>
         </Box>
-        <Box>
+       </Box>
       </Box>
-      
-      </Box>
-      
-    </Box>
 
       <Box>
         <InteractiveForm model={demoModel} />

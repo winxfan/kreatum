@@ -55,7 +55,7 @@ export default function Header() {
     <AppBar position="sticky" color="default" sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
       <Toolbar sx={{ gap: 2 }}>
         <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>Neurolibrary</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>Креатум</Typography>
         </Link>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 2 }}>

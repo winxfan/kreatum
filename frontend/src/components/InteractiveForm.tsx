@@ -71,6 +71,7 @@ export default function InteractiveForm({ model, userId }: Props) {
       <CardContent>
         <Box component="form" onSubmit={onSubmit} sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
           <Box>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>Вход</Typography>
             {['image','video','audio'].includes(model.from) && (
               <FileOrUrlInput accept={acceptByFrom(model.from)} label={model.from.toUpperCase()} name="input" />
             )}
@@ -118,7 +119,7 @@ export default function InteractiveForm({ model, userId }: Props) {
           </Box>
 
           <Box>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Output</Typography>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>Выход</Typography>
             {model.to === 'image' && resultUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img alt="result" src={resultUrl} style={{ maxWidth: '100%', borderRadius: 8 }} />
