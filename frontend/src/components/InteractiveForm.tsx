@@ -14,7 +14,16 @@ import Collapse from '@mui/material/Collapse';
 import IconButton from '@mui/material/IconButton';
 import DeleteForeverRoundedIcon from '@mui/icons-material/DeleteForeverRounded';
 import InsertDriveFileRoundedIcon from '@mui/icons-material/InsertDriveFileRounded';
+import LinearProgress from '@mui/material/LinearProgress';
+import Snackbar from '@mui/material/Snackbar';
+import Slider from '@mui/material/Slider';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 import { API_BASE } from '@/lib/api';
+import { useAtom } from 'jotai';
+import { userAtom } from '@/state/user';
 import type { Model, IOType } from '@/types/model';
 
 type Props = { model: Model; userId?: string | null };
@@ -33,6 +42,12 @@ export default function InteractiveForm({ model, userId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [progress, setProgress] = useState<number>(0);
+  const [snack, setSnack] = useState<string | null>(null);
+  const [count, setCount] = useState<number>(1);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [balanceOpen, setBalanceOpen] = useState(false);
+  const [user] = useAtom(userAtom);
 
   const [files, setFiles] = useState<File[]>([]);
 
@@ -74,9 +89,19 @@ export default function InteractiveForm({ model, userId }: Props) {
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // Простые проверки статусов
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
+    if ((user.balance_tokens ?? 0) <= 0) {
+      setBalanceOpen(true);
+      return;
+    }
     setLoading(true);
     setError(null);
     setResultUrl(null);
+    setProgress(10);
     try {
       // На данном этапе отправляем JSON-заглушку; позже заменим на multipart с файлами
       const body: Record<string, any> = {
@@ -84,6 +109,7 @@ export default function InteractiveForm({ model, userId }: Props) {
         duration_seconds: Number((e.currentTarget.elements.namedItem('duration_seconds') as HTMLInputElement)?.value || durationOptions[0]),
         audio: (e.currentTarget.elements.namedItem('audio') as HTMLInputElement)?.checked || false,
         input_files_count: files.length,
+        count,
       };
       if (userId) body.user_id = userId;
 
@@ -95,6 +121,10 @@ export default function InteractiveForm({ model, userId }: Props) {
       const data = await res.json();
       if (!res.ok) throw new Error(typeof data === 'string' ? data : JSON.stringify(data));
       setResultUrl(data.result_url || null);
+      setSnack('Демо-запуск выполнен');
+      // Имитация прогресса до 100%
+      setProgress(70);
+      setTimeout(() => setProgress(100), 800);
     } catch (e: any) {
       setError(e.message || 'Ошибка');
     } finally {
@@ -181,6 +211,11 @@ export default function InteractiveForm({ model, userId }: Props) {
               multiline rows={4} sx={{ mt: 2 }} fullWidth
             />
 
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" sx={{ mb: 1, display: 'block' }}>Количество</Typography>
+              <Slider value={count} onChange={(_, v) => setCount(v as number)} min={1} max={10} step={1} valueLabelDisplay="on" />
+            </Box>
+
             <TextField
               select
               name="duration_seconds"
@@ -250,6 +285,11 @@ export default function InteractiveForm({ model, userId }: Props) {
 
           <Box>
             <Typography variant="subtitle1" sx={{ mb: 1 }}>Выход</Typography>
+            {(loading || progress > 0) && progress < 100 && (
+              <Box sx={{ mb: 2 }}>
+                <LinearProgress variant={progress ? 'determinate' : 'indeterminate'} value={progress || undefined} />
+              </Box>
+            )}
             {model.to === 'image' && resultUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img alt="result" src={resultUrl} style={{ maxWidth: '100%', borderRadius: 8 }} />
@@ -269,12 +309,40 @@ export default function InteractiveForm({ model, userId }: Props) {
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
               Стоимость зависит от параметров модели и длительности
             </Typography>
-            <Button variant="outlined" sx={{ mt: 2 }} disabled={!resultUrl} fullWidth>
+            <Button variant="outlined" sx={{ mt: 2 }} disabled={!resultUrl} fullWidth onClick={() => {
+              if (resultUrl) {
+                const a = document.createElement('a');
+                a.href = resultUrl;
+                a.download = 'result';
+                a.click();
+              }
+            }}>
               Скачать
             </Button>
             {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
           </Box>
         </Box>
+        <Snackbar open={!!snack} autoHideDuration={2500} message={snack || ''} onClose={() => setSnack(null)} />
+        <Dialog open={authOpen} onClose={() => setAuthOpen(false)}>
+          <DialogTitle>Требуется авторизация</DialogTitle>
+          <DialogContent>
+            <Typography>Пожалуйста, войдите, чтобы запустить генерацию.</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAuthOpen(false)}>Закрыть</Button>
+            <Button variant="contained" href="/profile">Войти</Button>
+          </DialogActions>
+        </Dialog>
+        <Dialog open={balanceOpen} onClose={() => setBalanceOpen(false)}>
+          <DialogTitle>Недостаточно токенов</DialogTitle>
+          <DialogContent>
+            <Typography>Пополните баланс для продолжения.</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setBalanceOpen(false)}>Закрыть</Button>
+            <Button variant="contained" href="/balance">Пополнить</Button>
+          </DialogActions>
+        </Dialog>
       </CardContent>
     </Card>
   );
