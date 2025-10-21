@@ -7,6 +7,10 @@ import PublicIcon from '@mui/icons-material/Public';
 import InteractiveForm from '@/components/InteractiveForm';
 import type { Model } from '@/types/model';
 import banner from '@/assets/banner.jpg';
+import veo1 from '@/assets/veo3input1.png';
+import veo2 from '@/assets/veo3input2.png';
+import veo3 from '@/assets/veo3input3.png';
+import veoOut from '@/assets/veo3output1.mp4';
 
 const demoModel: Model = {
   id: 'demo-veo', 
@@ -15,6 +19,43 @@ const demoModel: Model = {
   description: 'Image to Video demo',
   from: 'image',
   to: 'video',
+  demo_input: [
+    {
+      type: 'text',
+      name: 'prompt',
+      title: 'Описание сцены',
+      is_required: true,
+      hint: 'Опишите, что должно произойти в видео',
+      content: 'Ярмарка с каруселью и воздушными змеями; бабочки над цветущим полем; балерина делает пируэты на сцене, тёплый закатный свет',
+    },
+    {
+      type: 'image',
+      name: 'reference_1',
+      title: 'Референс 1',
+      url: veo1.src,
+    },
+    {
+      type: 'image',
+      name: 'reference_2',
+      title: 'Референс 2',
+      url: veo2.src,
+    },
+    {
+      type: 'image',
+      name: 'reference_3',
+      title: 'Референс 3',
+      url: veo3.src,
+    },
+  ],
+  demo_output: [
+    {
+      type: 'video',
+      name: 'result',
+      title: 'Пример результата',
+      url: (veoOut as any).src || (veoOut as unknown as string),
+      meta: { preview: veo3.src },
+    },
+  ],
   options: {
     durationOptions: [3,5,10],
     resolutionOptions: ['720p','1080p'],

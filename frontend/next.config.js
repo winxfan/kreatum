@@ -48,6 +48,15 @@ const nextConfig = {
       { protocol: 'http', hostname: '**' }
     ]
   },
+  webpack: (config) => {
+    // Поддержка импорта медиафайлов как URL
+    config.module.rules.push({
+      test: /\.(mp4|webm|ogg|mp3|wav|m4a)$/i,
+      type: 'asset/resource',
+      generator: { filename: 'static/media/[name].[hash][ext]' },
+    });
+    return config;
+  },
 };
 
 module.exports = nextConfig;

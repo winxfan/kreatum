@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -24,11 +24,11 @@ import DialogActions from '@mui/material/DialogActions';
 import { API_BASE } from '@/lib/api';
 import { useAtom } from 'jotai';
 import { userAtom } from '@/state/user';
-import type { Model, IOType } from '@/types/model';
+import type { Model, IOType, IOField } from '@/types/model';
 
 type Props = { model: Model; userId?: string | null };
 
-type PreviewItem = { url: string; type: IOType; name: string; index: number };
+type PreviewItem = { url: string; type: IOType; name: string; index: number; isDemo?: boolean };
 
 function acceptByFrom(from: IOType) {
   if (from === 'image') return 'image/*';
@@ -57,6 +57,26 @@ export default function InteractiveForm({ model, userId }: Props) {
   const previews: PreviewItem[] = useMemo(() => {
     return files.map((f, idx) => ({ url: URL.createObjectURL(f), type: model.from, name: f.name, index: idx }));
   }, [files, model.from]);
+
+  const [demoMedia, setDemoMedia] = useState<IOField[]>([]);
+  useEffect(() => {
+    const list = Array.isArray(model.demo_input) ? model.demo_input : [];
+    const media = list.filter((f) => (f.type === 'image' || f.type === 'video' || f.type === 'audio') && !!f.url);
+    setDemoMedia(media);
+  }, [model.demo_input]);
+
+  const demoPreviews: PreviewItem[] = useMemo(() => {
+    return demoMedia.map((f, idx) => ({ url: f.url as string, type: f.type as IOType, name: f.title || f.name, index: idx, isDemo: true }));
+  }, [demoMedia]);
+
+  const allPreviews: PreviewItem[] = useMemo(() => {
+    return [...demoPreviews, ...previews];
+  }, [demoPreviews, previews]);
+
+  const demoTextFields: IOField[] = useMemo(() => {
+    const list = Array.isArray(model.demo_input) ? model.demo_input : [];
+    return list.filter((f) => f.type === 'text');
+  }, [model.demo_input]);
 
   const durationOptions = useMemo(() => {
     const opt = model.options?.durationOptions;
@@ -87,6 +107,10 @@ export default function InteractiveForm({ model, userId }: Props) {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const removeDemoAt = (index: number) => {
+    setDemoMedia((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     // Простые проверки статусов
@@ -105,12 +129,19 @@ export default function InteractiveForm({ model, userId }: Props) {
     try {
       // На данном этапе отправляем JSON-заглушку; позже заменим на multipart с файлами
       const body: Record<string, any> = {
-        prompt: (e.currentTarget.elements.namedItem('prompt') as HTMLInputElement)?.value,
         duration_seconds: Number((e.currentTarget.elements.namedItem('duration_seconds') as HTMLInputElement)?.value || durationOptions[0]),
         audio: (e.currentTarget.elements.namedItem('audio') as HTMLInputElement)?.checked || false,
         input_files_count: files.length,
         count,
       };
+      if (demoTextFields.length > 0) {
+        for (const field of demoTextFields) {
+          const el = e.currentTarget.elements.namedItem(field.name) as HTMLInputElement | null;
+          if (el) body[field.name] = el.value;
+        }
+      } else {
+        body.prompt = (e.currentTarget.elements.namedItem('prompt') as HTMLInputElement)?.value;
+      }
       if (userId) body.user_id = userId;
 
       const res = await fetch(`${API_BASE}/api/v1/models/${model.id}/run`, {
@@ -181,7 +212,7 @@ export default function InteractiveForm({ model, userId }: Props) {
             </Box>
 
             <Box sx={{ mt: 2, display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-              {previews.map((p) => (
+              {allPreviews.map((p) => (
                 <Box key={`${p.url}-${p.index}`} sx={{ width: 148, position: 'relative' }}>
                   {p.type === 'image' && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -193,7 +224,7 @@ export default function InteractiveForm({ model, userId }: Props) {
                   {p.type === 'audio' && (
                     <audio src={p.url} style={{ width: '100%' }} controls />
                   )}
-                  <IconButton aria-label="Удалить" onClick={() => removeFileAt(p.index)} size="small" color="error" sx={{ position: 'absolute', top: -10, right: -10, bgcolor: 'background.paper', boxShadow: 1 }}>
+                  <IconButton aria-label="Удалить" onClick={() => (p.isDemo ? removeDemoAt(p.index) : removeFileAt(p.index))} size="small" color="error" sx={{ position: 'absolute', top: -10, right: -10, bgcolor: 'background.paper', boxShadow: 1 }}>
                     <DeleteForeverRoundedIcon fontSize="small" />
                   </IconButton>
                   <Typography variant="caption" color="text.secondary" title={p.name}>
@@ -203,13 +234,27 @@ export default function InteractiveForm({ model, userId }: Props) {
               ))}
             </Box>
 
-            <TextField
-              name="prompt"
-              label="Описание (prompt)" required
-              placeholder="Опишите желаемый результат"
-              defaultValue="Балерина танцует на зелёной траве у циркового шатра"
-              multiline rows={4} sx={{ mt: 2 }} fullWidth
-            />
+            {demoTextFields.length > 0 ? (
+              demoTextFields.map((f) => (
+                <TextField
+                  key={f.name}
+                  name={f.name}
+                  label={f.title || f.name}
+                  required={!!f.is_required}
+                  placeholder={f.hint || 'Введите значение'}
+                  defaultValue={f.content || ''}
+                  multiline rows={4} sx={{ mt: 2 }} fullWidth
+                />
+              ))
+            ) : (
+              <TextField
+                name="prompt"
+                label="Описание (prompt)" required
+                placeholder="Опишите желаемый результат"
+                defaultValue="Балерина танцует на зелёной траве у циркового шатра"
+                multiline rows={4} sx={{ mt: 2 }} fullWidth
+              />
+            )}
 
             <Box sx={{ mt: 2 }}>
               <Typography variant="caption" sx={{ mb: 1, display: 'block' }}>Количество</Typography>
@@ -295,7 +340,7 @@ export default function InteractiveForm({ model, userId }: Props) {
               <img alt="result" src={resultUrl} style={{ maxWidth: '100%', borderRadius: 8 }} />
             )}
             {model.to === 'video' && resultUrl && (
-              <video src={resultUrl} controls style={{ width: '100%', borderRadius: 8 }} />
+              <video src={resultUrl} controls style={{ width: '100%', borderRadius: 8, aspectRatio: '16/9' }} />
             )}
             {model.to === 'audio' && resultUrl && (
               <audio src={resultUrl} controls style={{ width: '100%' }} />
@@ -303,6 +348,27 @@ export default function InteractiveForm({ model, userId }: Props) {
             {!resultUrl && (
               <Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 2, color: 'text.secondary' }}>
                 Результат появится здесь после генерации
+              </Box>
+            )}
+
+            {/* Демо-выходы из схемы модели */}
+            {Array.isArray(model.demo_output) && model.demo_output.length > 0 && (
+              <Box sx={{ mt: 2, display: 'grid', gap: 1.5 }}>
+                <Typography variant="caption" color="text.secondary">Демо результат</Typography>
+                {model.demo_output.map((o) => (
+                  <Box key={`${o.name}-${o.type}`}>
+                    {o.type === 'image' && o.url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img alt={o.title || o.name} src={o.url} style={{ maxWidth: '100%', borderRadius: 8 }} />
+                    )}
+                    {o.type === 'video' && o.url && (
+                      <video src={o.url} controls style={{ width: '100%', borderRadius: 8, aspectRatio: '16/9' }} />
+                    )}
+                    {o.type === 'audio' && o.url && (
+                      <audio src={o.url} controls style={{ width: '100%' }} />
+                    )}
+                  </Box>
+                ))}
               </Box>
             )}
 

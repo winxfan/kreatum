@@ -1,5 +1,19 @@
 export type IOType = 'image' | 'video' | 'text' | 'audio';
 
+export type IOField = {
+  type: IOType;
+  name: string; // API ключ/имя параметра
+  title: string; // Заголовок поля
+  is_required?: boolean | null;
+  hint?: string | null;
+  description?: string | null;
+  // Для text
+  content?: string | null;
+  // Для media
+  url?: string | null;
+  meta?: Record<string, any> | null;
+};
+
 export type ModelOptions = {
   durationOptions?: number[] | null;
   resolutionOptions?: string[] | null; // e.g. ['720p','1080p']
@@ -20,6 +34,8 @@ export interface Model {
   options?: ModelOptions;
   hint?: string | null;
   max_file_count?: number | null;
+  demo_input?: IOField[] | null;
+  demo_output?: IOField[] | null;
 }
 
 

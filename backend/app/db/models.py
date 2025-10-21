@@ -39,6 +39,9 @@ class Model(Base):
     hint = Column(Text)
     options = Column(JSON)  # хранение опций UI
     max_file_count = Column(Numeric(10, 0))
+    # демо-описания входов/выходов для построения UI и предпросмотра
+    demo_input = Column(JSON)   # list[dict]
+    demo_output = Column(JSON)  # list[dict]
 
 
 class User(Base):
@@ -104,9 +107,9 @@ class Result(Base):
     meta = Column(JSON)
     is_ok = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    # массив UUID (строк) записей Data
-    input = Column(JSON)  # list[str]
-    output = Column(JSON)  # list[str]
+    # хранение структурированных объектов ввода/вывода (см. декларативную схему UI)
+    input = Column(JSON)
+    output = Column(JSON)
 
 
 class Data(Base):
