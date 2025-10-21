@@ -14,7 +14,7 @@ import CategoryTag from '@/components/CategoryTag';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const q = (ctx.query.q as string) || '';
