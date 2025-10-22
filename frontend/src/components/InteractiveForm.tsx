@@ -7,6 +7,7 @@ import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import MenuItem from '@mui/material/MenuItem';
 import Switch from '@mui/material/Switch';
+import Checkbox from '@mui/material/Checkbox';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
@@ -25,11 +26,11 @@ import DialogActions from '@mui/material/DialogActions';
 import { API_BASE } from '@/lib/api';
 import { useAtom } from 'jotai';
 import { userAtom } from '@/state/user';
-import type { Model, IOType, IOField } from '@/types/model';
+import type { Model, IOType, OptionField } from '@/types/model';
 
 type Props = { model: Model; userId?: string | null };
 
-type PreviewItem = { url: string; type: IOType; name: string; index: number; isDemo?: boolean };
+type PreviewItem = { url: string; type: IOType; name: string; index: number };
 
 function acceptByFrom(from: IOType) {
   if (from === 'image') return 'image/*';
@@ -66,41 +67,23 @@ export default function InteractiveForm({ model, userId }: Props) {
     return files.map((f, idx) => ({ url: URL.createObjectURL(f), type: model.from, name: f.name, index: idx }));
   }, [files, model.from]);
 
-  const [demoMedia, setDemoMedia] = useState<IOField[]>([]);
+  // demo_input больше не используется — превью только из выбранных пользователем файлов
+
+  const optionFields: OptionField[] = useMemo(() => Array.isArray(model.options) ? model.options : [], [model.options]);
+  const baseFields = useMemo(() => optionFields.filter((f) => f.group !== 'advanced'), [optionFields]);
+  const advancedFields = useMemo(() => optionFields.filter((f) => f.group === 'advanced'), [optionFields]);
+  const hasAdvanced = advancedFields.length > 0;
+  const [rangeValues, setRangeValues] = useState<Record<string, number>>({});
   useEffect(() => {
-    const list = Array.isArray(model.demo_input) ? model.demo_input : [];
-    const media = list.filter((f) => (f.type === 'image' || f.type === 'video' || f.type === 'audio') && !!f.url);
-    setDemoMedia(media);
-  }, [model.demo_input]);
-
-  const fileNameFromUrl = (url: string): string => {
-    try {
-      const u = new URL(url, 'http://localhost');
-      const last = (u.pathname.split('/').pop() || '').split('?')[0];
-      return decodeURIComponent(last || url);
-    } catch {
-      const last = (url.split('/').pop() || '').split('?')[0];
-      return decodeURIComponent(last || url);
-    }
-  };
-
-  const demoPreviews: PreviewItem[] = useMemo(() => {
-    return demoMedia.map((f, idx) => ({ url: f.url as string, type: f.type as IOType, name: fileNameFromUrl(f.url as string), index: idx, isDemo: true }));
-  }, [demoMedia]);
-
-  const allPreviews: PreviewItem[] = useMemo(() => {
-    return [...demoPreviews, ...previews];
-  }, [demoPreviews, previews]);
-
-  const demoTextFields: IOField[] = useMemo(() => {
-    const list = Array.isArray(model.demo_input) ? model.demo_input : [];
-    return list.filter((f) => f.type === 'text');
-  }, [model.demo_input]);
-
-  const durationOptions = useMemo(() => {
-    const opt = model.options?.durationOptions;
-    return Array.isArray(opt) && opt.length > 0 ? opt : [5, 10, 15];
-  }, [model.options?.durationOptions]);
+    const initial: Record<string, number> = {};
+    optionFields.forEach((f) => {
+      if (f.type === 'range') {
+        const dv = typeof f.default_value === 'number' ? f.default_value : (typeof f.min === 'number' ? f.min : 0);
+        initial[f.name] = dv as number;
+      }
+    });
+    setRangeValues(initial);
+  }, [optionFields]);
 
   const onDrop = (ev: React.DragEvent<HTMLDivElement>) => {
     ev.preventDefault();
@@ -146,31 +129,51 @@ export default function InteractiveForm({ model, userId }: Props) {
     setResultUrl(null);
     setProgress(10);
     try {
-      // Валидация обязательных текстовых полей из схемы
-      const requiredFields = (Array.isArray(model.demo_input) ? model.demo_input : []).filter((f) => f.type === 'text' && f.is_required);
-      for (const f of requiredFields) {
-        const el = e.currentTarget.elements.namedItem(f.name) as HTMLInputElement | null;
-        if (!el || !el.value?.trim()) {
+      // Валидация обязательных полей из options (кроме boolean)
+      for (const f of optionFields) {
+        if (!f.is_required) continue;
+        if (f.type === 'switch' || f.type === 'checkbox') continue;
+        if (f.type === 'range') {
+          const val = rangeValues[f.name];
+          if (val === undefined || val === null) {
+            setLoading(false);
+            setError(`Поле "${f.title || f.name}" обязательно для заполнения`);
+            return;
+          }
+          continue;
+        }
+        const el = e.currentTarget.elements.namedItem(f.name) as HTMLInputElement | HTMLSelectElement | null;
+        if (!el) {
           setLoading(false);
           setError(`Поле "${f.title || f.name}" обязательно для заполнения`);
           return;
         }
+        if ((el as HTMLInputElement).value !== undefined) {
+          const v = (el as HTMLInputElement).value;
+          if (v == null || String(v).trim() === '') {
+            setLoading(false);
+            setError(`Поле "${f.title || f.name}" обязательно для заполнения`);
+            return;
+          }
+        }
       }
 
       // На данном этапе отправляем JSON-заглушку; позже заменим на multipart с файлами
-      const body: Record<string, any> = {
-        duration_seconds: Number((e.currentTarget.elements.namedItem('duration_seconds') as HTMLInputElement)?.value || durationOptions[0]),
-        audio: (e.currentTarget.elements.namedItem('audio') as HTMLInputElement)?.checked || false,
-        input_files_count: files.length,
-        count,
-      };
-      if (demoTextFields.length > 0) {
-        for (const field of demoTextFields) {
-          const el = e.currentTarget.elements.namedItem(field.name) as HTMLInputElement | null;
-          if (el) body[field.name] = el.value;
+      const body: Record<string, any> = { input_files_count: files.length, count };
+      for (const f of optionFields) {
+        if (f.type === 'switch' || f.type === 'checkbox') {
+          const el = e.currentTarget.elements.namedItem(f.name) as HTMLInputElement | null;
+          body[f.name] = !!el?.checked;
+        } else if (f.type === 'multiselect') {
+          const el = e.currentTarget.elements.namedItem(f.name) as HTMLSelectElement | null;
+          const vals = el ? Array.from(el.selectedOptions).map((o) => o.value) : [];
+          body[f.name] = vals;
+        } else if (f.type === 'range') {
+          body[f.name] = rangeValues[f.name];
+        } else {
+          const el = e.currentTarget.elements.namedItem(f.name) as HTMLInputElement | HTMLSelectElement | null;
+          if (el) body[f.name] = (el as HTMLInputElement).value;
         }
-      } else {
-        body.prompt = (e.currentTarget.elements.namedItem('prompt') as HTMLInputElement)?.value;
       }
       if (userId) body.user_id = userId;
 
@@ -193,7 +196,7 @@ export default function InteractiveForm({ model, userId }: Props) {
     }
   };
 
-  const opt = model.options || {};
+  // unified options are rendered above via optionFields
 
   return (
     <Card>
@@ -244,8 +247,8 @@ export default function InteractiveForm({ model, userId }: Props) {
             </Box>
 
             <Box sx={{ mt: 2, display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-              {allPreviews.map((p) => (
-                <Box key={`${p.url}-${p.index}`} sx={{ width: 148, position: 'relative' }}>
+              {previews.map((p) => (
+                <Box key={`${p.url}-${p.index}`} sx={{ width: p.type === 'audio' ? '100%' : 148, position: 'relative' }}>
                   {p.type === 'image' && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={p.url} alt={p.name} style={{ width: '100%', borderRadius: 8 }} />
@@ -256,7 +259,7 @@ export default function InteractiveForm({ model, userId }: Props) {
                   {p.type === 'audio' && (
                     <AudioPlayer src={p.url} style={{ width: '100%' }} customAdditionalControls={[]} customVolumeControls={[]} layout="horizontal" />
                   )}
-                  <IconButton aria-label="Удалить" onClick={() => (p.isDemo ? removeDemoAt(p.index) : removeFileAt(p.index))} size="small" color="error" sx={{ position: 'absolute', top: -10, right: -10, bgcolor: 'background.paper', boxShadow: 1 }}>
+                  <IconButton aria-label="Удалить" onClick={() => removeFileAt(p.index)} size="small" color="error" sx={{ position: 'absolute', top: -10, right: -10, bgcolor: 'background.paper', boxShadow: 1 }}>
                     <DeleteForeverRoundedIcon fontSize="small" />
                   </IconButton>
                   <Typography variant="caption" color="text.secondary" title={p.name}>
@@ -266,94 +269,132 @@ export default function InteractiveForm({ model, userId }: Props) {
               ))}
             </Box>
 
-            {demoTextFields.length > 0 ? (
-              demoTextFields.map((f) => (
-                <TextField
-                  key={f.name}
-                  name={f.name}
-                  label={f.title || f.name}
-                  required={!!f.is_required}
-                  placeholder={f.hint || 'Введите значение'}
-                  defaultValue={f.content || ''}
-                  multiline rows={4} sx={{ mt: 2 }} fullWidth
-                />
-              ))
-            ) : (
-              <TextField
-                name="prompt"
-                label="Описание (prompt)" required
-                placeholder="Опишите желаемый результат"
-                defaultValue="Балерина танцует на зелёной траве у циркового шатра"
-                multiline rows={4} sx={{ mt: 2 }} fullWidth
-              />
-            )}
+            {baseFields.map((f) => {
+              if (f.type === 'text') {
+                return (
+                  <TextField key={f.name} name={f.name} label={f.title || f.name} required={!!f.is_required} placeholder={f.hint || ''} defaultValue={f.default_value ?? ''} multiline rows={f.name === 'prompt' ? 4 : 2} sx={{ mt: 2 }} fullWidth />
+                );
+              }
+              if (f.type === 'number') {
+                return (
+                  <TextField key={f.name} name={f.name} type="number" label={f.title || f.name} required={!!f.is_required} inputProps={{ min: f.min ?? undefined, max: f.max ?? undefined, step: f.step ?? 1 }} defaultValue={f.default_value ?? ''} sx={{ mt: 2 }} fullWidth />
+                );
+              }
+              if (f.type === 'select') {
+                return (
+                  <TextField key={f.name} select name={f.name} label={f.title || f.name} required={!!f.is_required} defaultValue={f.default_value ?? (Array.isArray(f.options) ? f.options[0] : '')} sx={{ mt: 2 }} fullWidth>
+                    {(f.options || []).map((o) => (
+                      <MenuItem key={String(o)} value={o as any}>{String(o)}</MenuItem>
+                    ))}
+                  </TextField>
+                );
+              }
+              if (f.type === 'multiselect') {
+                return (
+                  <TextField key={f.name} select SelectProps={{ multiple: true }} name={f.name} label={f.title || f.name} defaultValue={f.default_value ?? []} sx={{ mt: 2 }} fullWidth>
+                    {(f.options || []).map((o) => (
+                      <MenuItem key={String(o)} value={o as any}>{String(o)}</MenuItem>
+                    ))}
+                  </TextField>
+                );
+              }
+              if (f.type === 'switch') {
+                return (
+                  <FormControlLabel key={f.name} control={<Switch name={f.name} defaultChecked={!!f.default_value} />} label={f.title || f.name} sx={{ mt: 1 }} />
+                );
+              }
+              if (f.type === 'checkbox') {
+                return (
+                  <FormControlLabel key={f.name} control={<Checkbox name={f.name} defaultChecked={!!f.default_value} />} label={f.title || f.name} sx={{ mt: 1 }} />
+                );
+              }
+              if (f.type === 'range') {
+                const min = f.min ?? 0;
+                const max = f.max ?? 100;
+                const step = f.step ?? 1;
+                const val = rangeValues[f.name] ?? min;
+                return (
+                  <Box key={f.name} sx={{ mt: 2 }}>
+                    <Typography variant="caption" sx={{ mb: 1, display: 'block' }}>{f.title || f.name}</Typography>
+                    <Slider value={val} onChange={(_, v) => setRangeValues((s) => ({ ...s, [f.name]: v as number }))} min={min} max={max} step={step} valueLabelDisplay="on" />
+                    <input type="hidden" name={f.name} value={val} />
+                  </Box>
+                );
+              }
+              return null;
+            })}
 
             <Box sx={{ mt: 2 }}>
               <Typography variant="caption" sx={{ mb: 1, display: 'block' }}>Количество</Typography>
               <Slider value={count} onChange={(_, v) => setCount(v as number)} min={1} max={10} step={1} valueLabelDisplay="on" />
             </Box>
 
-            <TextField
-              select
-              name="duration_seconds"
-              label="Длительность, сек" required
-              defaultValue={durationOptions[0]}
-              sx={{ mt: 2 }} fullWidth
-            >
-              {durationOptions.map((n) => (
-                <MenuItem key={String(n)} value={n}>{n}s</MenuItem>
-              ))}
-            </TextField>
-
-            <FormControlLabel control={<Switch name="audio" />} label="Сгенерировать аудио" sx={{ mt: 1 }} />
-
+            {hasAdvanced && (
+            <>
             <Divider sx={{ my: 2 }} />
             <Button size="small" onClick={() => setAdvancedOpen((v) => !v)}>
               {advancedOpen ? 'Скрыть дополнительные настройки' : 'Показать дополнительные настройки'}
             </Button>
             <Collapse in={advancedOpen} timeout="auto" unmountOnExit>
               <Box sx={{ mt: 2 }}>
-                {/* Дополнительные настройки (скрыты по умолчанию) */}
-                {Array.isArray(opt.durationOptions) && opt.durationOptions.length > 0 && (
-                  <TextField select fullWidth label="Длительность (предустановки)" name="duration" sx={{ mt: 2 }} defaultValue={opt.durationOptions[0]}>
-                    {opt.durationOptions.map((n) => (
-                      <MenuItem key={String(n)} value={n}>{n}s</MenuItem>
-                    ))}
-                  </TextField>
-                )}
-                {Array.isArray(opt.resolutionOptions) && opt.resolutionOptions.length > 0 && (
-                  <TextField select fullWidth label="Разрешение" name="resolution" sx={{ mt: 2 }} defaultValue={opt.resolutionOptions[0]}>
-                    {opt.resolutionOptions.map((r) => (
-                      <MenuItem key={r} value={r}>{r}</MenuItem>
-                    ))}
-                  </TextField>
-                )}
-                {Array.isArray(opt.aspectRatioOptions) && opt.aspectRatioOptions.length > 0 && (
-                  <TextField select fullWidth label="Соотношение сторон" name="aspect_ratio" sx={{ mt: 2 }} defaultValue={opt.aspectRatioOptions[0]}>
-                    {opt.aspectRatioOptions.map((r) => (
-                      <MenuItem key={r} value={r}>{r}</MenuItem>
-                    ))}
-                  </TextField>
-                )}
-                {opt.negativePrompt && (
-                  <TextField name="negative_prompt" label="Негативный prompt" multiline rows={2} sx={{ mt: 2 }} fullWidth />
-                )}
-                {opt.generateAudio && (
-                  <FormControlLabel control={<Switch name="generate_audio" defaultChecked={!!opt.generateAudio} />} label="Сгенерировать аудио" sx={{ mt: 1 }} />
-                )}
-                {opt.removeBackground && (
-                  <FormControlLabel control={<Switch name="remove_background" defaultChecked={!!opt.removeBackground} />} label="Удалить фон" />
-                )}
-                {opt.enhancePrompt && (
-                  <FormControlLabel control={<Switch name="enhance_prompt" defaultChecked={!!opt.enhancePrompt} />} label="Улучшить prompt" />
-                )}
-                {model.hint && (
-                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>
-                    Подсказка модели: {model.hint}
-                  </Typography>
-                )}
+                {advancedFields.map((f) => {
+                  if (f.type === 'text') {
+                    return (
+                      <TextField key={f.name} name={f.name} label={f.title || f.name} required={!!f.is_required} placeholder={f.hint || ''} defaultValue={f.default_value ?? ''} multiline rows={2} sx={{ mt: 2 }} fullWidth />
+                    );
+                  }
+                  if (f.type === 'number') {
+                    return (
+                      <TextField key={f.name} name={f.name} type="number" label={f.title || f.name} required={!!f.is_required} inputProps={{ min: f.min ?? undefined, max: f.max ?? undefined, step: f.step ?? 1 }} defaultValue={f.default_value ?? ''} sx={{ mt: 2 }} fullWidth />
+                    );
+                  }
+                  if (f.type === 'select') {
+                    return (
+                      <TextField key={f.name} select name={f.name} label={f.title || f.name} required={!!f.is_required} defaultValue={f.default_value ?? (Array.isArray(f.options) ? f.options[0] : '')} sx={{ mt: 2 }} fullWidth>
+                        {(f.options || []).map((o) => (
+                          <MenuItem key={String(o)} value={o as any}>{String(o)}</MenuItem>
+                        ))}
+                      </TextField>
+                    );
+                  }
+                  if (f.type === 'multiselect') {
+                    return (
+                      <TextField key={f.name} select SelectProps={{ multiple: true }} name={f.name} label={f.title || f.name} defaultValue={f.default_value ?? []} sx={{ mt: 2 }} fullWidth>
+                        {(f.options || []).map((o) => (
+                          <MenuItem key={String(o)} value={o as any}>{String(o)}</MenuItem>
+                        ))}
+                      </TextField>
+                    );
+                  }
+                  if (f.type === 'switch') {
+                    return (
+                      <FormControlLabel key={f.name} control={<Switch name={f.name} defaultChecked={!!f.default_value} />} label={f.title || f.name} sx={{ mt: 1 }} />
+                    );
+                  }
+                  if (f.type === 'checkbox') {
+                    return (
+                      <FormControlLabel key={f.name} control={<Checkbox name={f.name} defaultChecked={!!f.default_value} />} label={f.title || f.name} sx={{ mt: 1 }} />
+                    );
+                  }
+                  if (f.type === 'range') {
+                    const min = f.min ?? 0;
+                    const max = f.max ?? 100;
+                    const step = f.step ?? 1;
+                    const val = rangeValues[f.name] ?? min;
+                    return (
+                      <Box key={f.name} sx={{ mt: 2 }}>
+                        <Typography variant="caption" sx={{ mb: 1, display: 'block' }}>{f.title || f.name}</Typography>
+                        <Slider value={val} onChange={(_, v) => setRangeValues((s) => ({ ...s, [f.name]: v as number }))} min={min} max={max} step={step} valueLabelDisplay="on" />
+                        <input type="hidden" name={f.name} value={val} />
+                      </Box>
+                    );
+                  }
+                  return null;
+                })}
               </Box>
             </Collapse>
+            </>
+            )}
 
             <Button type="submit" variant="contained" disabled={loading} sx={{ mt: 2 }} fullWidth>
               Запустить
@@ -375,7 +416,7 @@ export default function InteractiveForm({ model, userId }: Props) {
               <video src={resultUrl} controls style={{ width: '100%', borderRadius: 8, aspectRatio: '16/9' }} />
             )}
             {model.to === 'audio' && resultUrl && (
-              <audio src={resultUrl} controls style={{ width: '100%' }} />
+              <AudioPlayer src={resultUrl} style={{ width: '100%' }} customAdditionalControls={[]} customVolumeControls={[]} layout="horizontal" />
             )}
             {!resultUrl && (
               <Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 2, color: 'text.secondary' }}>
@@ -397,7 +438,7 @@ export default function InteractiveForm({ model, userId }: Props) {
                       <video src={o.url} controls style={{ width: '100%', borderRadius: 8, aspectRatio: '16/9' }} />
                     )}
                     {o.type === 'audio' && o.url && (
-                      <audio src={o.url} controls style={{ width: '100%' }} />
+                      <AudioPlayer src={o.url} style={{ width: '100%' }} customAdditionalControls={[]} customVolumeControls={[]} layout="horizontal" />
                     )}
                   </Box>
                 ))}

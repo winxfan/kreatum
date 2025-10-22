@@ -59,13 +59,14 @@ const demoModel: Model = {
       meta: { preview: veo3.src },
     },
   ],
-  options: {
-    durationOptions: [3,5,10],
-    resolutionOptions: ['720p','1080p'],
-    generateAudio: false,
-    aspectRatioOptions: ['16:9','9:16','1:1'],
-    negativePrompt: '',
-  }
+  options: [
+    { name: 'prompt', title: 'Описание сцены', type: 'text', is_required: true, default_value: 'Солнечная ярмарка, карусель, бабочки в цветущем поле, балерина на сцене' },
+    { name: 'duration', title: 'Длительность', type: 'select', options: [3,5,10], default_value: 5 },
+    { name: 'resolution', title: 'Разрешение', type: 'select', options: ['720p','1080p'], default_value: '1080p' },
+    { name: 'aspect_ratio', title: 'Соотношение сторон', type: 'select', options: ['16:9','9:16','1:1'], default_value: '16:9' },
+    { name: 'generate_audio', title: 'Сгенерировать звук', type: 'switch', default_value: false },
+    { name: 'negative_prompt', title: 'Negative Prompt', type: 'text', default_value: '' },
+  ]
 };
 
 export default function Home() {
@@ -86,7 +87,14 @@ export default function Home() {
       demo_output: [
         { type: 'video', name: 'result', title: 'Пример результата', url: (veoOut as any).src || (veoOut as unknown as string), meta: { preview: veo3.src } },
       ],
-      options: { durationOptions: [3,5,10], resolutionOptions: ['720p','1080p'], generateAudio: false, aspectRatioOptions: ['16:9','9:16','1:1'], negativePrompt: '' },
+      options: [
+        { name: 'prompt', title: 'Описание сцены', type: 'text', is_required: true, default_value: 'Солнечная ярмарка, карусель, бабочки в цветущем поле, балерина на сцене' },
+        { name: 'duration', title: 'Длительность', type: 'select', options: [3,5,10], default_value: 5 },
+        { name: 'resolution', title: 'Разрешение', type: 'select', options: ['720p','1080p'], default_value: '1080п' },
+        { name: 'aspect_ratio', title: 'Соотношение сторон', type: 'select', options: ['16:9','9:16','1:1'], default_value: '16:9' },
+        { name: 'generate_audio', title: 'Сгенерировать звук', type: 'switch', default_value: false },
+        { name: 'negative_prompt', title: 'Negative Prompt', type: 'text', default_value: '' },
+      ],
     },
     {
       id: 'text2image',
@@ -102,7 +110,11 @@ export default function Home() {
       demo_output: [
         { type: 'image', name: 'result', title: 'Пример', url: veo2.src },
       ],
-      options: { aspectRatioOptions: ['1:1','16:9','9:16'] },
+      options: [
+        { name: 'prompt', title: 'Описание', type: 'text', is_required: true, default_value: 'Футуристический город на закате, неоновые вывески, синематика' },
+        { name: 'negative_prompt', title: 'Негативные слова', type: 'text', default_value: '' },
+        { name: 'aspect_ratio', title: 'Соотношение сторон', type: 'select', options: ['1:1','16:9','9:16'], default_value: '1:1' },
+      ]
     },
     {
       id: 'audio2audio',
@@ -127,10 +139,13 @@ export default function Home() {
       to: 'audio',
       demo_input: [
         { type: 'video', name: 'clip', title: 'Клип', url: (veoOut as any).src || (veoOut as unknown as string) },
-        { type: 'text', name: 'voice', title: 'Голос', content: 'female, calm, studio quality' },
       ],
       demo_output: [
         { type: 'audio', name: 'result', title: 'Озвучка', url: 'https://file-examples.com/storage/fe5ac2f0f2cb4dc082d8b9da/2017/11/file_example_MP3_700KB.mp3' },
+      ],
+      options: [
+        { name: 'voice', title: 'Голос', type: 'text', default_value: 'female, calm, studio quality' },
+        { name: 'volume', title: 'Громкость', type: 'range', min: 0, max: 100, step: 5, default_value: 60 },
       ],
     },
   ], []);

@@ -14,15 +14,35 @@ export type IOField = {
   meta?: Record<string, any> | null;
 };
 
-export type ModelOptions = {
-  durationOptions?: number[] | null;
-  resolutionOptions?: string[] | null; // e.g. ['720p','1080p']
-  generateAudio?: boolean | null;
-  removeBackground?: boolean | null;
-  aspectRatioOptions?: string[] | null; // e.g. ['1:1','16:9']
-  negativePrompt?: string | null; // presence means show field
-  enhancePrompt?: boolean | null;
-};
+export type FieldType =
+  | 'text'
+  | 'number'
+  | 'select'
+  | 'multiselect'
+  | 'switch'
+  | 'checkbox'
+  | 'range'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'file';
+
+export interface OptionField {
+  name: string;
+  title: string;
+  type: FieldType;
+  is_required?: boolean | null;
+  default_value?: any;
+  options?: any[] | null; // for select/multiselect
+  min?: number | null; // for number/range
+  max?: number | null; // for number/range
+  step?: number | null; // for number/range
+  hint?: string | null;
+  description?: string | null;
+  order?: number | null;
+  group?: string | null;
+  visible_if?: Record<string, any> | null;
+}
 
 export interface Model {
   id: string;
@@ -31,7 +51,7 @@ export interface Model {
   banner_image_url?: string | null;
   from: IOType;
   to: IOType;
-  options?: ModelOptions;
+  options?: OptionField[] | null;
   hint?: string | null;
   max_file_count?: number | null;
   demo_input?: IOField[] | null;
