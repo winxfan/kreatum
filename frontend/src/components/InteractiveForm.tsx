@@ -86,6 +86,7 @@ export default function InteractiveForm({ model, userId }: Props) {
   const advancedFields = useMemo(() => optionFields.filter((f) => f.group === 'advanced'), [optionFields]);
   const hasAdvanced = advancedFields.length > 0;
   const [rangeValues, setRangeValues] = useState<Record<string, number>>({});
+  const hasDemoOutput = useMemo(() => Array.isArray(model.demo_output) && model.demo_output.length > 0, [model.demo_output]);
   useEffect(() => {
     const initial: Record<string, number> = {};
     optionFields.forEach((f) => {
@@ -407,14 +408,14 @@ export default function InteractiveForm({ model, userId }: Props) {
             {model.to === 'audio' && resultUrl && (
               <AudioPlayer src={resultUrl} style={{ width: '100%' }} customAdditionalControls={[]} customVolumeControls={[]} layout="horizontal" />
             )}
-            {!resultUrl && (
+            {!resultUrl && (!hasDemoOutput || !!error) && (
               <Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 2, color: 'text.secondary' }}>
                 Результат появится здесь после генерации
               </Box>
             )}
 
             {/* Демо-выходы из схемы модели */}
-            {Array.isArray(model.demo_output) && model.demo_output.length > 0 && (
+            {hasDemoOutput && (
               <Box sx={{ mt: 2, display: 'grid', gap: 1.5 }}>
                 <Typography variant="caption" color="text.secondary">Демо результат</Typography>
                 {model.demo_output.map((o) => (
