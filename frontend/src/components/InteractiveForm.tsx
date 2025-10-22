@@ -27,6 +27,7 @@ import UploadZone from '@/components/UploadZone';
 import { API_BASE } from '@/lib/api';
 import { useAtom } from 'jotai';
 import { userAtom } from '@/state/user';
+import { formStatesAtom } from '@/state/form';
 import type { Model, IOType, OptionField } from '@/types/model';
 
 type Props = { model: Model; userId?: string | null };
@@ -59,7 +60,17 @@ export default function InteractiveForm({ model, userId }: Props) {
   const [balanceOpen, setBalanceOpen] = useState(false);
   const [user] = useAtom(userAtom);
 
-  const [files, setFiles] = useState<File[]>([]);
+  const [store, setStore] = useAtom(formStatesAtom);
+  const formKey = model.id;
+  const formState = store[formKey] || { values: {}, files: [] as File[] };
+  const [files, setFilesLocal] = useState<File[]>(formState.files);
+  const setFiles = (updater: (prev: File[]) => File[]) => {
+    setFilesLocal((prev) => {
+      const next = updater(prev);
+      setStore({ ...store, [formKey]: { values: formState.values, files: next } });
+      return next;
+    });
+  };
 
   const maxFileCount = model.max_file_count ?? 1;
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -161,21 +172,31 @@ export default function InteractiveForm({ model, userId }: Props) {
 
       // На данном этапе отправляем JSON-заглушку; позже заменим на multipart с файлами
       const body: Record<string, any> = { input_files_count: files.length, count };
+      const nextValues: Record<string, any> = { ...formState.values };
       for (const f of optionFields) {
         if (f.type === 'switch' || f.type === 'checkbox') {
           const el = e.currentTarget.elements.namedItem(f.name) as HTMLInputElement | null;
           body[f.name] = !!el?.checked;
+          nextValues[f.name] = body[f.name];
         } else if (f.type === 'multiselect') {
           const el = e.currentTarget.elements.namedItem(f.name) as HTMLSelectElement | null;
           const vals = el ? Array.from(el.selectedOptions).map((o) => o.value) : [];
           body[f.name] = vals;
+          nextValues[f.name] = vals;
         } else if (f.type === 'range') {
           body[f.name] = rangeValues[f.name];
+          nextValues[f.name] = rangeValues[f.name];
         } else {
           const el = e.currentTarget.elements.namedItem(f.name) as HTMLInputElement | HTMLSelectElement | null;
-          if (el) body[f.name] = (el as HTMLInputElement).value;
+          if (el) {
+            body[f.name] = (el as HTMLInputElement).value;
+            nextValues[f.name] = body[f.name];
+          }
         }
       }
+      // cохраним актуальное состояние формы
+      setStore({ ...store, [formKey]: { values: nextValues, files } });
+      console.log('FORM SUBMIT', formKey, nextValues, files);
       if (userId) body.user_id = userId;
 
       const res = await fetch(`${API_BASE}/api/v1/models/${model.id}/run`, {

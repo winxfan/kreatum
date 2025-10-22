@@ -78,19 +78,14 @@ export default function Home() {
       description: 'Image to Video',
       from: 'image',
       to: 'video',
-      demo_input: [
-        { type: 'text', name: 'prompt', title: 'Описание сцены', is_required: true, content: 'Солнечная ярмарка, карусель, бабочки в цветущем поле, балерина на сцене' },
-        { type: 'image', name: 'reference_1', title: 'Референс 1', url: veo1.src },
-        { type: 'image', name: 'reference_2', title: 'Референс 2', url: veo2.src },
-        { type: 'image', name: 'reference_3', title: 'Референс 3', url: veo3.src },
-      ],
       demo_output: [
         { type: 'video', name: 'result', title: 'Пример результата', url: (veoOut as any).src || (veoOut as unknown as string), meta: { preview: veo3.src } },
       ],
       options: [
+        { name: 'upload', title: 'Загрузка изображений', type: 'upload_zone', hint: 'Добавьте 1-3 изображения-референса', default_value: [{ type: 'image' }] },
         { name: 'prompt', title: 'Описание сцены', type: 'text', is_required: true, default_value: 'Солнечная ярмарка, карусель, бабочки в цветущем поле, балерина на сцене' },
         { name: 'duration', title: 'Длительность', type: 'select', options: [3,5,10], default_value: 5 },
-        { name: 'resolution', title: 'Разрешение', type: 'select', options: ['720p','1080p'], default_value: '1080п' },
+        { name: 'resolution', title: 'Разрешение', type: 'select', options: ['720p','1080p'], default_value: '1080p' },
         { name: 'aspect_ratio', title: 'Соотношение сторон', type: 'select', options: ['16:9','9:16','1:1'], default_value: '16:9' },
         { name: 'generate_audio', title: 'Сгенерировать звук', type: 'switch', default_value: false },
         { name: 'negative_prompt', title: 'Negative Prompt', type: 'text', default_value: '' },
@@ -103,10 +98,6 @@ export default function Home() {
       banner_image_url: banner.src,
       from: 'text',
       to: 'image',
-      demo_input: [
-        { type: 'text', name: 'prompt', title: 'Описание', is_required: true, content: 'Футуристический город на закате, неоновые вывески, синематика' },
-        { type: 'text', name: 'negative_prompt', title: 'Негативные слова', is_required: false, content: '' },
-      ],
       demo_output: [
         { type: 'image', name: 'result', title: 'Пример', url: veo2.src },
       ],
@@ -123,11 +114,13 @@ export default function Home() {
       banner_image_url: banner.src,
       from: 'audio',
       to: 'audio',
-      demo_input: [
-        { type: 'audio', name: 'input_audio', title: 'Аудио', url: 'https://upload.wikimedia.org/wikipedia/commons/4/4f/Beethoven_Moonlight_1st_movement.ogg' },
-      ],
       demo_output: [
         { type: 'audio', name: 'result', title: 'Пример', url: 'https://upload.wikimedia.org/wikipedia/commons/3/3c/Elgar_Nimrod.ogg' },
+      ],
+      options: [
+        { name: 'upload', title: 'Загрузка аудио', type: 'upload_zone', hint: 'Добавьте аудиофайл', default_value: [{ type: 'audio' }] },
+        { name: 'enhance', title: 'Улучшить звук', type: 'switch', default_value: true },
+        { name: 'denoise', title: 'Подавление шума', type: 'switch', default_value: true },
       ],
     },
     {
@@ -137,13 +130,11 @@ export default function Home() {
       banner_image_url: banner.src,
       from: 'video',
       to: 'audio',
-      demo_input: [
-        { type: 'video', name: 'clip', title: 'Клип', url: (veoOut as any).src || (veoOut as unknown as string) },
-      ],
       demo_output: [
         { type: 'audio', name: 'result', title: 'Озвучка', url: 'https://file-examples.com/storage/fe5ac2f0f2cb4dc082d8b9da/2017/11/file_example_MP3_700KB.mp3' },
       ],
       options: [
+        { name: 'upload', title: 'Загрузка видео', type: 'upload_zone', hint: 'Добавьте видеоролик', default_value: [{ type: 'video' }] },
         { name: 'voice', title: 'Голос', type: 'text', default_value: 'female, calm, studio quality' },
         { name: 'volume', title: 'Громкость', type: 'range', min: 0, max: 100, step: 5, default_value: 60 },
       ],
@@ -192,9 +183,6 @@ export default function Home() {
        </Box>
       </Box>
 
-      <Box>
-        <InteractiveForm model={demoModel} />
-      </Box>
 
       {/* Блок 2: современные модели с табами */}
       <Box sx={{ mt: 8 }}>
