@@ -15,7 +15,7 @@ import Divider from '@mui/material/Divider';
 import Collapse from '@mui/material/Collapse';
 import IconButton from '@mui/material/IconButton';
 import DeleteForeverRoundedIcon from '@mui/icons-material/DeleteForeverRounded';
-import InsertDriveFileRoundedIcon from '@mui/icons-material/InsertDriveFileRounded';
+
 import LinearProgress from '@mui/material/LinearProgress';
 import Snackbar from '@mui/material/Snackbar';
 import Slider from '@mui/material/Slider';
@@ -387,7 +387,7 @@ export default function InteractiveForm({ model, userId }: Props) {
             )}
 
             <Button type="submit" variant="contained" disabled={loading} sx={{ mt: 2 }} fullWidth>
-              Запустить
+              Запустить генерацию
             </Button>
           </Box>
 
