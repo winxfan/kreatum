@@ -23,6 +23,7 @@ import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
+import UploadZone from '@/components/UploadZone';
 import { API_BASE } from '@/lib/api';
 import { useAtom } from 'jotai';
 import { userAtom } from '@/state/user';
@@ -205,46 +206,13 @@ export default function InteractiveForm({ model, userId }: Props) {
           <Box>
             <Typography variant="subtitle1" sx={{ mb: 1 }}>Вход</Typography>
 
-            <Box
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={onDrop}
-              onClick={() => inputRef.current?.click()}
-              sx={{
-                border: '2px dashed',
-                borderColor: 'divider',
-                borderRadius: 2,
-                p: 3,
-                textAlign: 'center',
-                cursor: 'pointer',
-                bgcolor: 'background.default',
-              }}
-            >
-              <InsertDriveFileRoundedIcon color="action" sx={{ fontSize: 40, mb: 1 }} />
-              <Typography variant="body1" sx={{ mb: 1 }}>
-                {model.from === 'image' && 'Кликните или перетащите изображения'}
-                {model.from === 'video' && 'Кликните или перетащите видео'}
-                {model.from === 'audio' && 'Кликните или перетащите аудио'}
-                {model.from === 'text' && 'Кликните чтобы выбрать файл'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Подсказка: перетащите файлы с компьютера, вставьте из буфера обмена (Ctrl/Cmd+V).
-              </Typography>
-              <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
-                Допустимые типы: {allowedExtText(model.from)}
-              </Typography>
-              <Typography variant="caption" display="block" color="text.secondary">
-                Максимум файлов: {maxFileCount}
-              </Typography>
-              <input
-                ref={inputRef}
-                type="file"
-                name="input_files"
-                multiple={maxFileCount > 1}
-                accept={acceptByFrom(model.from)}
-                onChange={onSelectFiles}
-                style={{ display: 'none' }}
-              />
-            </Box>
+            <UploadZone
+              type={model.from}
+              hint={optionFields.find((f) => f.type === 'upload_zone')?.hint || null}
+              multiple={maxFileCount > 1}
+              maxFileCount={maxFileCount}
+              onFiles={(picked) => setFiles((prev) => [...prev, ...picked].slice(0, maxFileCount))}
+            />
 
             <Box sx={{ mt: 2, display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
               {previews.map((p) => (

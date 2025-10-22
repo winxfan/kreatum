@@ -25,7 +25,8 @@ export type FieldType =
   | 'image'
   | 'video'
   | 'audio'
-  | 'file';
+  | 'file'
+  | 'upload_zone';
 
 export interface OptionField {
   name: string;
