@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import createEmotionCache from '@/createEmotionCache';
 import theme from '@/theme';
 import Layout from '@/components/Layout';
+import 'react-h5-audio-player/lib/styles.css';
 
 const clientSideEmotionCache = createEmotionCache();
 const queryClient = new QueryClient();

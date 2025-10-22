@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
+import AudioPlayer from 'react-h5-audio-player';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -37,6 +38,13 @@ function acceptByFrom(from: IOType) {
   return '*/*';
 }
 
+function allowedExtText(from: IOType) {
+  if (from === 'image') return 'jpg, jpeg, png, webp, gif, avif';
+  if (from === 'video') return 'mp4, webm, ogg';
+  if (from === 'audio') return 'mp3, wav, ogg, m4a';
+  return '';
+}
+
 export default function InteractiveForm({ model, userId }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,8 +73,19 @@ export default function InteractiveForm({ model, userId }: Props) {
     setDemoMedia(media);
   }, [model.demo_input]);
 
+  const fileNameFromUrl = (url: string): string => {
+    try {
+      const u = new URL(url, 'http://localhost');
+      const last = (u.pathname.split('/').pop() || '').split('?')[0];
+      return decodeURIComponent(last || url);
+    } catch {
+      const last = (url.split('/').pop() || '').split('?')[0];
+      return decodeURIComponent(last || url);
+    }
+  };
+
   const demoPreviews: PreviewItem[] = useMemo(() => {
-    return demoMedia.map((f, idx) => ({ url: f.url as string, type: f.type as IOType, name: f.title || f.name, index: idx, isDemo: true }));
+    return demoMedia.map((f, idx) => ({ url: f.url as string, type: f.type as IOType, name: fileNameFromUrl(f.url as string), index: idx, isDemo: true }));
   }, [demoMedia]);
 
   const allPreviews: PreviewItem[] = useMemo(() => {
@@ -127,6 +146,17 @@ export default function InteractiveForm({ model, userId }: Props) {
     setResultUrl(null);
     setProgress(10);
     try {
+      // Валидация обязательных текстовых полей из схемы
+      const requiredFields = (Array.isArray(model.demo_input) ? model.demo_input : []).filter((f) => f.type === 'text' && f.is_required);
+      for (const f of requiredFields) {
+        const el = e.currentTarget.elements.namedItem(f.name) as HTMLInputElement | null;
+        if (!el || !el.value?.trim()) {
+          setLoading(false);
+          setError(`Поле "${f.title || f.name}" обязательно для заполнения`);
+          return;
+        }
+      }
+
       // На данном этапе отправляем JSON-заглушку; позже заменим на multipart с файлами
       const body: Record<string, any> = {
         duration_seconds: Number((e.currentTarget.elements.namedItem('duration_seconds') as HTMLInputElement)?.value || durationOptions[0]),
@@ -188,14 +218,16 @@ export default function InteractiveForm({ model, userId }: Props) {
             >
               <InsertDriveFileRoundedIcon color="action" sx={{ fontSize: 40, mb: 1 }} />
               <Typography variant="body1" sx={{ mb: 1 }}>
-                Для добавления файла кликните по области или перетащите сюда
+                {model.from === 'image' && 'Кликните или перетащите изображения'}
+                {model.from === 'video' && 'Кликните или перетащите видео'}
+                {model.from === 'audio' && 'Кликните или перетащите аудио'}
+                {model.from === 'text' && 'Кликните чтобы выбрать файл'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Подсказка: перетащите файлы с компьютера, изображения со страниц,
-                вставьте из буфера обмена (Ctrl/Cmd+V).
+                Подсказка: перетащите файлы с компьютера, вставьте из буфера обмена (Ctrl/Cmd+V).
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
-                Допустимые типы: jpg, jpeg, png, webp, gif, avif
+                Допустимые типы: {allowedExtText(model.from)}
               </Typography>
               <Typography variant="caption" display="block" color="text.secondary">
                 Максимум файлов: {maxFileCount}
@@ -222,7 +254,7 @@ export default function InteractiveForm({ model, userId }: Props) {
                     <video src={p.url} style={{ width: '100%', borderRadius: 8 }} controls />
                   )}
                   {p.type === 'audio' && (
-                    <audio src={p.url} style={{ width: '100%' }} controls />
+                    <AudioPlayer src={p.url} style={{ width: '100%' }} customAdditionalControls={[]} customVolumeControls={[]} layout="horizontal" />
                   )}
                   <IconButton aria-label="Удалить" onClick={() => (p.isDemo ? removeDemoAt(p.index) : removeFileAt(p.index))} size="small" color="error" sx={{ position: 'absolute', top: -10, right: -10, bgcolor: 'background.paper', boxShadow: 1 }}>
                     <DeleteForeverRoundedIcon fontSize="small" />
