@@ -31,16 +31,16 @@ services:
     volumes:
       - ../backend/app:/app/app:rw
 
-  frontend:
-    build:
-      context: ..
-      dockerfile: frontend/Dockerfile
-    env_file:
-      - ../frontend/.env.local
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
+  # frontend:
+  #   build:
+  #     context: ..
+  #     dockerfile: frontend/Dockerfile
+  #   env_file:
+  #     - ../frontend/.env.local
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - backend
 
 volumes:
   pgdata:

@@ -45,7 +45,8 @@ class OAuthService:
                 client_secret=settings.oauth_yandex_client_secret,
                 access_token_url="https://oauth.yandex.ru/token",
                 authorize_url="https://oauth.yandex.ru/authorize",
-                api_base_url="https://login.yandex.ru/info",
+                api_base_url="https://login.yandex.ru/",
+                client_kwargs={"scope": "login:email login:info"},
             )
 
             cls._oauth = oauth
