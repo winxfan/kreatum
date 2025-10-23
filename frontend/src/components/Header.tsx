@@ -13,7 +13,7 @@ import AddIcon from '@mui/icons-material/Add';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useQuery } from '@tanstack/react-query';
 import { useAtom } from 'jotai';
-import { userAtom } from '@/state/user';
+import { userAtom, logoutAtom } from '@/state/user';
 import { API_BASE, getUser } from '@/lib/api';
 import { useRouter } from 'next/router';
 
@@ -33,6 +33,7 @@ const textModels = [
 
 export default function Header() {
   const [user, setUser] = useAtom(userAtom);
+  const [, logout] = useAtom(logoutAtom);
   const router = useRouter();
   const { data } = useQuery({
     queryKey: ['me'],
@@ -122,7 +123,7 @@ export default function Header() {
             </IconButton>
             <Menu anchorEl={anchorUser} open={!!anchorUser} onClose={closeMenu(setAnchorUser)}>
               <MenuItem component={Link as any} href="/profile" onClick={closeMenu(setAnchorUser)}>Профиль</MenuItem>
-              <MenuItem onClick={() => { window.location.href = `${API_BASE}/api/v1/auth/logout`; }}>Выйти</MenuItem>
+              <MenuItem onClick={() => { logout(); closeMenu(setAnchorUser)(); }}>Выйти</MenuItem>
             </Menu>
           </Box>
         )}

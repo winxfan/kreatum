@@ -10,3 +10,9 @@ export type User = {
 export const userAtom = atom<User>(null);
 
 
+// Сброс локальной сессии пользователя
+export const logoutAtom = atom(null, (get, set) => {
+  set(userAtom, null);
+});
+
+
