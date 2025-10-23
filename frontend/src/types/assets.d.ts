@@ -28,3 +28,8 @@ declare module '*.m4a' {
   export default src;
 }
 
+declare module '*.svg' {
+  const src: string;
+  export default src;
+}
+

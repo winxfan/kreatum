@@ -29,6 +29,7 @@ import { useAtom } from 'jotai';
 import { userAtom } from '@/state/user';
 import { formStatesAtom } from '@/state/form';
 import type { Model, IOType, OptionField } from '@/types/model';
+import { useRouter } from 'next/router';
 
 type Props = { model: Model; userId?: string | null };
 
@@ -63,6 +64,7 @@ export default function InteractiveForm({ model, userId }: Props) {
   const [store, setStore] = useAtom(formStatesAtom);
   const formKey = model.id;
   const formState = store[formKey] || { values: {}, files: [] as File[] };
+  const router = useRouter();
   const [files, setFilesLocal] = useState<File[]>(formState.files);
   const setFiles = (updater: (prev: File[]) => File[]) => {
     setFilesLocal((prev) => {
@@ -122,15 +124,13 @@ export default function InteractiveForm({ model, userId }: Props) {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const removeDemoAt = (index: number) => {
-    setDemoMedia((prev) => prev.filter((_, i) => i !== index));
-  };
+  // демо-медиа больше не управляются локально
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     // Простые проверки статусов
     if (!user) {
-      setAuthOpen(true);
+      router.replace({ pathname: router.pathname, query: { ...router.query, auth: 'true' } }, undefined, { shallow: true });
       return;
     }
     if ((user.balance_tokens ?? 0) <= 0) {
@@ -418,7 +418,7 @@ export default function InteractiveForm({ model, userId }: Props) {
             {hasDemoOutput && (
               <Box sx={{ mt: 2, display: 'grid', gap: 1.5 }}>
                 <Typography variant="caption" color="text.secondary">Демо результат</Typography>
-                {model.demo_output.map((o) => (
+                {(model.demo_output || []).map((o) => (
                   <Box key={`${o.name}-${o.type}`}>
                     {o.type === 'image' && o.url && (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -452,16 +452,7 @@ export default function InteractiveForm({ model, userId }: Props) {
           </Box>
         </Box>
         <Snackbar open={!!snack} autoHideDuration={2500} message={snack || ''} onClose={() => setSnack(null)} />
-        <Dialog open={authOpen} onClose={() => setAuthOpen(false)}>
-          <DialogTitle>Требуется авторизация</DialogTitle>
-          <DialogContent>
-            <Typography>Пожалуйста, войдите, чтобы запустить генерацию.</Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setAuthOpen(false)}>Закрыть</Button>
-            <Button variant="contained" href="/profile">Войти</Button>
-          </DialogActions>
-        </Dialog>
+        {/* Модалка авторизации вынесена глобально в Layout через AuthDialog */}
         <Dialog open={balanceOpen} onClose={() => setBalanceOpen(false)}>
           <DialogTitle>Недостаточно токенов</DialogTitle>
           <DialogContent>

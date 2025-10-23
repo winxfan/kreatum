@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAtom } from 'jotai';
 import { userAtom } from '@/state/user';
 import { API_BASE, getUser } from '@/lib/api';
+import { useRouter } from 'next/router';
 
 const photoModels = [
   { label: 'Reve / text-to-image', href: '/models?category=photo' },
@@ -32,6 +33,7 @@ const textModels = [
 
 export default function Header() {
   const [user, setUser] = useAtom(userAtom);
+  const router = useRouter();
   const { data } = useQuery({
     queryKey: ['me'],
     queryFn: getUser,
@@ -95,7 +97,7 @@ export default function Header() {
 
         {!user && (
           <Button color="primary" variant="contained" onClick={() => {
-            window.location.href = `${API_BASE}/api/v1/auth/login/google`;
+            router.replace({ pathname: router.pathname, query: { ...router.query, auth: 'true' } }, undefined, { shallow: true });
           }}>
             Войти
           </Button>
