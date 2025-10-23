@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter
+from starlette.middleware.sessions import SessionMiddleware
 from fastapi.responses import ORJSONResponse
 
 from app.core.config import settings
@@ -9,6 +10,8 @@ app = FastAPI(
     version="0.1.0",
     default_response_class=ORJSONResponse,
 )
+
+app.add_middleware(SessionMiddleware, secret_key=settings.jwt_secret_key)
 
 api_v1 = APIRouter(prefix="/api/v1")
 api_v1.include_router(auth.router)
