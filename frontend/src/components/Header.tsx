@@ -105,10 +105,18 @@ export default function Header() {
 
         {user && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" sx={{ mr: 0.5 }}>Баланс: {user.balance_tokens}</Typography>
-            <IconButton color="primary" size="small" component={Link as any} href="/profile" aria-label="Пополнить">
-              <AddIcon />
-            </IconButton>
+            <Box sx={{ display: 'flex', alignItems: 'center', border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+              <Box sx={{ px: 1.5, py: 0.75 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {`$${Number(user.balance_tokens ?? 0).toFixed(2)}`}
+                </Typography>
+              </Box>
+              <Box sx={{ borderLeft: '1px solid', borderColor: 'divider' }}>
+                <IconButton color="primary" size="small" component={Link as any} href="/balance" aria-label="Пополнить" sx={{ borderRadius: 0, px: 1.25, py: 0.75 }}>
+                  <AddIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            </Box>
             <IconButton onClick={openMenu(setAnchorUser)} size="small">
               <Avatar sx={{ width: 28, height: 28 }} src={user.avatar_url || undefined} />
             </IconButton>
