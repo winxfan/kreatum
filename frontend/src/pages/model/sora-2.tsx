@@ -6,6 +6,7 @@ import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import CategoryTag from '@/components/CategoryTag';
 import InteractiveForm from '@/components/InteractiveForm';
+import ModelIntro from '@/components/ModelIntro';
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const { id } = ctx.query as { id: string };
@@ -44,19 +45,7 @@ export default function ModelPage({ model }: { model: any }) {
 
   return (
     <>
-      <Box sx={{
-        p: 3,
-        mb: 3,
-        borderRadius: 2,
-        background: model.banner_image_url ? `url(${model.banner_image_url}) center/cover` : 'linear-gradient(90deg,#1a1d24,#111318)'
-      }}>
-        <CategoryTag from={model.from || 'image'} to={model.to || 'video'} />
-        <Typography variant="h3" sx={{ fontWeight: 800, mt: 1 }}>{model.title}</Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 720 }}>
-          {model.description}
-        </Typography>
-        <Button variant="contained" sx={{ mt: 2 }} href="#playground">Попробовать сейчас</Button>
-      </Box>
+      <ModelIntro model={model} />
       <Box id="playground">
         <InteractiveForm model={model} />
       </Box>
