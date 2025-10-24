@@ -22,6 +22,19 @@ function getIcon(kind: IO) {
   }
 }
 
+const RU_LABELS: Record<IO, string> = {
+  image: 'изображения',
+  video: 'видео',
+  text: 'текст',
+  audio: 'аудио',
+  json: 'JSON',
+  speech: 'речь',
+};
+
+function getRu(kind: IO): string {
+  return RU_LABELS[kind] ?? kind;
+}
+
 function getColors(from: IO, to: IO) {
   const map: Record<string, { bg: string; color: string; border: string }> = {
     // Audio → *
@@ -51,7 +64,7 @@ export default function CategoryTag({ from, to }: { from: IO; to: IO }) {
       <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
         {getIcon(from)}
       </Box>
-      <Chip size="small" label={`${from}-to-${to}`} sx={{ bgcolor: 'transparent', color: colors.color, px: 0 }} />
+      <Chip size="small" label={`из ${getRu(from)} в ${getRu(to)}`} sx={{ bgcolor: 'transparent', color: colors.color, px: 0 }} />
       <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
         {getIcon(to)}
       </Box>
