@@ -9,7 +9,13 @@ import CTA from '@/components/landing/CTA';
 import type { Model } from '@/types/model';
 import InteractiveForm from '@/components/InteractiveForm';
 import Typography from '@mui/material/Typography';
-import { SEOHead, PromptsBlock, UseCasesGrid, MediaGallery } from '@/components/landing';
+import { SEOHead, UseCasesGrid, GenerationsLibrary } from '@/components/landing';
+import example1 from '@/assets/example1.jpg';
+import example2 from '@/assets/example2.jpg';
+import example3  from '@/assets/example3.jpg';
+import example4 from '@/assets/example4.jpg';
+import example5 from '@/assets/example5.jpg';
+import example6 from '@/assets/example6.jpg';
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const { id } = ctx.query as { id: string };
@@ -27,20 +33,10 @@ export default function ModelPage({ model }: { model: Model }) {
   const description = model?.description || 'AI генерация видео с Veo 3: нейросеть от Google для профессионалов. Попробуйте бесплатно.';
   const canonical = `/model/veo3`;
 
-  const gallery = [
-    { src: '/media/example1.mp4', type: 'video' as const, title: 'Пейзаж на рассвете', caption: 'Кинематографичный наезд камеры, 10 с' },
-    { src: '/media/example2.mp4', type: 'video' as const, title: 'Вертикальный стрит-арт', caption: 'Вертикальный 9:16, 8 с' },
-    { src: '/media/example3.mp4', type: 'video' as const, title: 'Демонстрация продукта', caption: '360°, 12 с' },
-    { src: '/media/example4.mp4', type: 'video' as const, title: 'Изображение→Видео', caption: 'Движение 6 с' },
-    { src: '/media/example5.mp4', type: 'video' as const, title: 'Диалог под дождём', caption: '10 с, киношный стиль' },
-    { src: '/media/example6.mp4', type: 'video' as const, title: 'Зацикленный брендовый фон', caption: 'Зацикливание 8 с' },
-  ];
+  // Библиотека генераций: сопоставим изображения с промптами ниже
+  const libraryImages = [example1, example2, example3, example4, example5, example6];
 
-  const videoObjects = gallery.slice(0, 4).map((g) => ({
-    name: g.title || 'Демо Veo 3',
-    description: `${g.title || 'Демо Veo 3'} — ${description}`,
-    contentUrl: g.src,
-  }));
+  const videoObjects: any[] = [];
 
   const faqItems = [
     { question: 'Что делает модель Veo 3 уникальной?', answer: 'Нативная генерация видео и звука, поддержка image-to-video, гибкие параметры.' },
@@ -97,7 +93,14 @@ export default function ModelPage({ model }: { model: Model }) {
         />
       </Box>
 
-      <MediaGallery title="Примеры генерации" items={gallery} />
+  <GenerationsLibrary
+        items={prompts.slice(0, libraryImages.length).map((p, i) => ({
+          img: (libraryImages[i] as any)?.src || (libraryImages[i] as unknown as string),
+          title: p.title,
+          prompt: p.prompt,
+        }))}
+        onRun={() => handleRunPrompt()}
+      />
       <InfoBlock
         title="Как это работает"
         steps={[
@@ -106,7 +109,7 @@ export default function ModelPage({ model }: { model: Model }) {
           'Получите сгенерированное видео',
         ]}
       />
-      <PromptsBlock title="Готовые промпты" items={prompts as any} onRun={handleRunPrompt} />
+      {/* Промпты объединены с примерами в "Библиотека генераций" */}
       <UseCasesGrid items={useCases} />
       
       <Pricing />

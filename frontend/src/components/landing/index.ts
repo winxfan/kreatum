@@ -8,5 +8,6 @@ export { default as MediaGallery } from './MediaGallery';
 export { default as PromptsBlock } from './PromptsBlock';
 export { default as UseCasesGrid } from './UseCasesGrid';
 export { default as SEOHead } from './SEOHead';
+export { default as GenerationsLibrary } from './GenerationsLibrary';
 
 
