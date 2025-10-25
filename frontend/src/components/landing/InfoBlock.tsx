@@ -27,7 +27,7 @@ export default function InfoBlock({ title, text, mediaType = 'none', mediaSrc = 
                 <video src={src} style={{ width: '100%', borderRadius: 12 }} controls playsInline />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img alt="example" src={src} style={{ width: '100%', borderRadius: 12 }} />
+                <img alt="пример" src={src} style={{ width: '100%', borderRadius: 12 }} />
               )}
             </Grid>
           ))}
@@ -60,7 +60,7 @@ export default function InfoBlock({ title, text, mediaType = 'none', mediaSrc = 
             <video src={mediaSrc} style={{ width: '100%', borderRadius: 12 }} controls playsInline />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img alt="media" src={mediaSrc} style={{ width: '100%', borderRadius: 12, maxWidth: '100%' }} />
+            <img alt="медиа" src={mediaSrc} style={{ width: '100%', borderRadius: 12, maxWidth: '100%' }} />
           )}
         </Box>
       )}

@@ -4,7 +4,7 @@ import Button from '@mui/material/Button';
 import CategoryTag from '@/components/CategoryTag';
 import banner from '@/assets/banner.jpg';
 
-export default function ModelIntro({ model }: { model: any }) {
+export default function ModelIntro({ model, title, description }: { model: any, title: string, description: string }) {
   return (
     <Box sx={{
       p: 3,
@@ -43,9 +43,9 @@ export default function ModelIntro({ model }: { model: any }) {
       }} />
       <Box sx={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start', p: 6 }}>
         <CategoryTag from={model.from || 'image'} to={model.to || 'video'} />
-        <Typography variant="h3" sx={{ fontWeight: 800, mt: 1 }}>{model.title}</Typography>
+        <Typography variant="h3" sx={{ fontWeight: 800, mt: 1 }}>{title}</Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 720 }}>
-          {model.description}
+          {model.description || description}
         </Typography>
         <Button variant="contained" sx={{ mt: 2 }} href="#playground">Попробовать сейчас</Button>
       </Box>
