@@ -9,7 +9,7 @@ import CTA from '@/components/landing/CTA';
 import type { Model } from '@/types/model';
 import InteractiveForm from '@/components/InteractiveForm';
 import Typography from '@mui/material/Typography';
-import { SEOHead, PromptsBlock, UseCasesGrid, MediaGallery, SafetyBlock } from '@/components/landing';
+import { SEOHead, PromptsBlock, UseCasesGrid, MediaGallery } from '@/components/landing';
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const { id } = ctx.query as { id: string };
@@ -87,7 +87,7 @@ export default function ModelPage({ model }: { model: Model }) {
       />
 
       <Box sx={{p: 4}}>
-        <Typography variant='h3' textAlign="center">Начните использовать Veo 3 сейчас</Typography>
+        <Typography variant='h4' textAlign="center">Начните использовать Veo 3 сейчас</Typography>
         <Typography variant="body1" color="text.secondary" textAlign="center" sx={{mb: 4, mt: 2}}>
           Veo 3 — это нейросеть для генерации видео на основе текста, созданная Google DeepMind. Она поддерживает управление стилем, длительностью и камерой, создавая последовательные и реалистичные сцены.
         </Typography>
@@ -108,13 +108,7 @@ export default function ModelPage({ model }: { model: Model }) {
       />
       <PromptsBlock title="Готовые промпты" items={prompts as any} onRun={handleRunPrompt} />
       <UseCasesGrid items={useCases} />
-      <Typography component="h2" variant="h4" sx={{ fontWeight: 800, mt: 4 }}>Почему Veo 3 — выбор для быстрых видеопрототипов</Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>Veo 3 позволяет быстро превращать текст и изображения в короткие видеоролики с профессиональным звуком. Это идеальный инструмент для маркетинга, социальных сетей и прототипирования — экономия времени и бюджета по сравнению с традиционной съёмкой.</Typography>
-      <Typography component="h3" variant="h5" sx={{ fontWeight: 800, mt: 3 }}>Технологические преимущества</Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>Синхронная генерация аудио и видео, поддержка image→video, гибкие aspect-ratio, а также варианты модели для разных сценариев (Fast / Full) делают Veo 3 масштабируемым решением для разработчиков и команд контента.</Typography>
-      <Typography component="h3" variant="h5" sx={{ fontWeight: 800, mt: 3 }}>Безопасность и ответственность</Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>Мы рекомендуем всегда проверять созданный контент на предмет соответствия локальному законодательству и этическим стандартам. Для чувствительных сцен используйте режимы с усиленной модерацией и водяными знаками.</Typography>
-      <SafetyBlock />
+      
       <Pricing />
       <FAQ />
       <CTA title="Создавайте видео с Veo 3" buttonText="Начать генерацию" background="/media/cta-bg.mp4" />
