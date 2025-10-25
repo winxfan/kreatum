@@ -43,9 +43,9 @@ export default function GenerationsLibrary({ title = 'Библиотека ге�
               <Box sx={{ mt: 1, p: 1.25, bgcolor: 'background.default', border: '1px dashed', borderColor: 'divider', borderRadius: 1.5, fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
                 {item.prompt}
               </Box>
-              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                <Button size="small" variant="outlined" onClick={() => copy(item.prompt)}>Скопировать</Button>
-                {onRun && <Button size="small" variant="contained" onClick={() => onRun(item.prompt)}>Запустить</Button>}
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1, mt: 1 }}>
+                <Button size="small" variant="outlined" fullWidth onClick={() => copy(item.prompt)}>Скопировать</Button>
+                {onRun && <Button size="small" variant="contained" fullWidth onClick={() => onRun(item.prompt)}>Запустить</Button>}
               </Box>
             </ImageListItem>
           ))}

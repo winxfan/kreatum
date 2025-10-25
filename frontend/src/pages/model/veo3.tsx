@@ -75,25 +75,27 @@ export default function ModelPage({ model }: { model: Model }) {
   return (
     <>
       <SEOHead title={title} description={description} canonical={canonical} videoObjects={videoObjects} faq={faqItems} />
-      <Box sx={{ maxWidth: 1200, mx: 'auto', px: { xs: 2, md: 3 } }}>
+      <Box sx={{ maxWidth: 1200, mx: 'auto'}}>
       <ModelIntro
         model={model}
         title="Veo 3 — генерация видео по тексту с нативным звуком"
         description="Veo 3 — это нейросеть для генерации видео на основе текста, созданная Google DeepMind. Она поддерживает управление стилем, длительностью и камерой, создавая последовательные и реалистичные сцены."
       />
 
-      <Box sx={{p: 4}}>
+      <Box>
+        <Box sx={{pl: 4, pr: 4}}>
         <Typography variant='h4' textAlign="center">Начните использовать Veo 3 сейчас</Typography>
         <Typography variant="body1" color="text.secondary" textAlign="center" sx={{mb: 4, mt: 2}}>
           Veo 3 — это нейросеть для генерации видео на основе текста, созданная Google DeepMind. Она поддерживает управление стилем, длительностью и камерой, создавая последовательные и реалистичные сцены.
         </Typography>
+        </Box>
 
         <InteractiveForm 
           model={model}
         />
       </Box>
 
-  <GenerationsLibrary
+      <GenerationsLibrary
         items={prompts.slice(0, libraryImages.length).map((p, i) => ({
           img: (libraryImages[i] as any)?.src || (libraryImages[i] as unknown as string),
           title: p.title,

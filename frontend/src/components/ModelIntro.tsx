@@ -7,7 +7,6 @@ import banner from '@/assets/banner.jpg';
 export default function ModelIntro({ model, title, description }: { model: any, title: string, description: string }) {
   return (
     <Box sx={{
-      p: 3,
       mb: 3,
       borderRadius: 0,
       position: 'relative',

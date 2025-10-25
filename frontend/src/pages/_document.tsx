@@ -13,7 +13,7 @@ export default class MyDocument extends Document<{ emotionStyleTags: JSX.Element
           {(this.props as any).emotionStyleTags}
         </Head>
         <body>
-          <Main />
+          <Main/>
           <NextScript />
         </body>
       </Html>
