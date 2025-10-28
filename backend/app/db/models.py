@@ -5,7 +5,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.declarative import declarative_base
-from utils import default_uuid
+from app.utils import default_uuid
 
 Base = declarative_base()
 

@@ -14,8 +14,8 @@ class OAuthService:
     @classmethod
     def get_oauth(cls) -> OAuth:
         if cls._oauth is None:
-            # Starlette Config reads from env; we also pass-through Pydantic settings via env
-            config = Config(".env")
+            # Читаем только из переменных окружения, без .env файла (чтобы не было ворнинга в контейнере)
+            config = Config()
             oauth = OAuth(config)
 
             # Google OpenID Connect

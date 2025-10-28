@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from typing import Any
+import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import RedirectResponse
 from authlib.integrations.base_client.errors import OAuthError
 import structlog
 
 from app.core.config import settings
 from app.services.oauth import oauth_service
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.db.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"]) 
 router_public = APIRouter(tags=["auth"])  # публичные колбэки без /api/v1
@@ -63,9 +67,25 @@ async def _handle_oauth_callback(request: Request, provider: str) -> RedirectRes
 
 
 @router.get("/oauth/{provider}/login")
-async def oauth_login(request: Request, provider: str):
+async def oauth_login(request: Request, provider: str, db: Session = Depends(get_db)):
     oauth = oauth_service.get_oauth()
     _validate_provider(provider)
+
+    # Создаём пользователя, если его ещё нет
+    session = request.session
+    anon_user_id: str | None = session.get("anon_user_id")
+    if not anon_user_id:
+        anon_user_id = str(uuid.uuid4())
+        session["anon_user_id"] = anon_user_id
+
+    try:
+        existing = db.query(User).filter(User.anon_user_id == anon_user_id).first()
+        if existing is None:
+            user = User(anon_user_id=anon_user_id)
+            db.add(user)
+            db.commit()
+    except Exception as exc:  # не блокируем OAuth редирект при проблемах с БД
+        logger.warning("oauth_login_user_init_failed", error=str(exc))
 
     # Для Яндекса используем публичный колбэк без /api/v1
     if provider == "yandex":
