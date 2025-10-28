@@ -1,133 +1,245 @@
-from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, Numeric, JSON
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-import uuid
+from sqlalchemy import (
+    Column, Text, Numeric, String, DateTime, ForeignKey,
+    Boolean, Integer, JSON, func, Enum as SAEnum,
+    Index, UniqueConstraint, CheckConstraint
+)
+from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.ext.declarative import declarative_base
+from utils import default_uuid
 
-from app.db.base import Base
+Base = declarative_base()
 
+# Enum types
+JobStatusEnum = SAEnum(
+    'waiting_payment', 'queued', 'processing', 'done', 'failed',
+    name='job_status', native_enum=True
+)
 
-def default_uuid() -> uuid.UUID:
-    return uuid.uuid4()
+TransactionTypeEnum = SAEnum(
+    'charge', 'purchase', 'refund', 'promo', 'gateway_payment',
+    name='transaction_type', native_enum=True
+)
 
+TransactionProviderEnum = SAEnum(
+    'yookassa', 'stripe', 'telegram', 'manual',
+    name='transaction_provider', native_enum=True
+)
 
-class Category(Base):
-    __tablename__ = "categories"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
-    slug = Column(Text, unique=True, nullable=False)
-    title = Column(Text, nullable=False)
-
-
-class Model(Base):
-    __tablename__ = "models"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
-    title = Column(Text, nullable=False)
-    name = Column(Text, nullable=False)  # fal-ai identifier
-    description = Column(Text)
-    category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"))
-    cost_per_second = Column(Numeric(14, 4), default=0)
-    audio_cost_multiplier = Column(Numeric(5, 2), default=2.0)
-    cost_currency = Column(String(3), default="USD")
-    cost_type = Column(Text, default="second")
-    format_from = Column(Text, nullable=False)
-    format_to = Column(Text, nullable=False)
-    banner_image_url = Column(Text)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    # new
-    hint = Column(Text)
-    options = Column(JSON)  # хранение опций UI
-    max_file_count = Column(Numeric(10, 0))
-    # демо-описания входов/выходов для построения UI и предпросмотра
-    demo_input = Column(JSON)   # list[dict]
-    demo_output = Column(JSON)  # list[dict]
-
+TransactionStatusEnum = SAEnum(
+    'success', 'failed', 'pending',
+    name='transaction_status', native_enum=True
+)
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index('ix_users_username', 'username'),
+        Index('ix_users_referrer_id', 'referrer_id'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
-    name = Column(Text)
+    telegram_id = Column(String)
+    username = Column(Text)
+    anon_user_id = Column(Text, unique=True)
     email = Column(Text, unique=True)
     avatar_url = Column(Text)
+
     balance_tokens = Column(Numeric(14, 4), default=0)
-    referrer_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    ref_code = Column(Text, unique=True)
+    referrer_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete='SET NULL'))
+
+    has_left_review = Column(Boolean, default=False)
+    consent_pd = Column(Boolean, default=False)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-
-class Tariff(Base):
-    __tablename__ = "tariffs"
+class Model(Base):
+    __tablename__ = "models"
+    __table_args__ = (
+        UniqueConstraint('name', name='uq_models_name'),
+        Index('ix_models_category_id', 'category_id'),
+        CheckConstraint("char_length(currency) = 3", name='ck_models_currency_len_3'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
-    name = Column(Text, nullable=False)
     title = Column(Text, nullable=False)
-    monthly_tokens = Column(Numeric(20, 0), nullable=False)
-    cost_rub = Column(Numeric(14, 2), nullable=False)
-    currency = Column(String(3), default="RUB")
+    name = Column(Text, nullable=False)
+    description = Column(Text)
+    category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id", ondelete='SET NULL'), nullable=True)
+
+    cost_unit = Column(Text, default="second")  
+    cost_per_unit_tokens = Column(Numeric(14, 4), default=0)
+    currency = Column(String(3), default="USD")
+
+    format_from = Column(JSONB, nullable=False)
+    format_to = Column(JSONB, nullable=False)
+
+    banner_image_url = Column(Text)
+    hint = Column(Text)
+    max_file_count = Column(Integer, default=1)
+
+    options = Column(JSONB)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class UserTariff(Base):
-    __tablename__ = "user_tariffs"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    tariff_id = Column(UUID(as_uuid=True), ForeignKey("tariffs.id"))
-    started_in = Column(DateTime(timezone=True))
-    expired_in = Column(DateTime(timezone=True))
-    is_active = Column(Boolean, default=True)
-
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (
+        Index('ix_transactions_user_created', 'user_id', 'created_at'),
+        Index('ix_transactions_user_status_created', 'user_id', 'status', 'created_at'),
+        Index('ix_transactions_job_id', 'job_id'),
+        CheckConstraint('amount_rub IS NULL OR amount_rub >= 0', name='ck_transactions_amount_nonneg'),
+        CheckConstraint("char_length(currency) = 3", name='ck_transactions_currency_len_3'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    type = Column(Text, nullable=False)  # charge,purchase,refund,promo
-    amount = Column(Numeric(14, 2), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete='CASCADE'))
+    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id", ondelete='SET NULL'), nullable=True)
+
+    type = Column(TransactionTypeEnum, nullable=False)
+    provider = Column(TransactionProviderEnum)
+    status = Column(TransactionStatusEnum)
+    amount_rub = Column(Numeric(14, 2))
+    tokens_delta = Column(Numeric(14, 4))
     currency = Column(String(3), default="RUB")
+    plan = Column(Text)
     reference = Column(Text)
-    meta = Column(JSON)
+    meta = Column(JSONB)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-
-class Result(Base):
-    __tablename__ = "results"
+class Job(Base):
+    __tablename__ = "jobs"
+    __table_args__ = (
+        Index('ix_jobs_user_status_created', 'user_id', 'status', 'created_at'),
+        Index('ix_jobs_model_created', 'model_id', 'created_at'),
+        Index('ix_jobs_is_paid', 'is_paid'),
+        Index('ix_jobs_input_gin', 'input', postgresql_using='gin'),
+        Index('ix_jobs_output_gin', 'output', postgresql_using='gin'),
+        CheckConstraint('price_rub IS NULL OR price_rub >= 0', name='ck_jobs_price_nonneg'),
+        CheckConstraint('tokens_reserved >= 0', name='ck_jobs_tokens_reserved_nonneg'),
+        CheckConstraint('tokens_consumed >= 0', name='ck_jobs_tokens_consumed_nonneg'),
+        CheckConstraint('tokens_consumed <= tokens_reserved', name='ck_jobs_tokens_consumed_lte_reserved'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    model_id = Column(UUID(as_uuid=True), ForeignKey("models.id"))
-    model_name = Column(Text)
-    category_id = Column(UUID(as_uuid=True))
-    balance_on_start = Column(Numeric(14, 4))
-    balance_on_end = Column(Numeric(14, 4))
-    cost_tokens = Column(Numeric(14, 4))
-    s3_url = Column(Text)
-    meta = Column(JSON)
-    is_ok = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    # хранение структурированных объектов ввода/вывода (см. декларативную схему UI)
-    input = Column(JSON)
-    output = Column(JSON)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete='CASCADE'))
+    model_id = Column(UUID(as_uuid=True), ForeignKey("models.id", ondelete='SET NULL'), nullable=True)
 
+    # Источники и идентификаторы
+    anon_user_id = Column(Text)
+    order_id = Column(Text, unique=True)
+    email = Column(Text)
+    generation_source = Column(Text, default="bot")  # bot | site | api
+
+    # Основная логика
+    service_type = Column(Text)       # animate | restore | text_to_image | etc.
+    status = Column(JobStatusEnum, default='waiting_payment', nullable=False)
+
+    # Экономика
+    price_rub = Column(Numeric(10, 2))
+    tokens_reserved = Column(Numeric(14, 4), default=0)
+    tokens_consumed = Column(Numeric(14, 4), default=0)
+    cost_unit = Column(Text)
+    cost_per_unit_tokens = Column(Numeric(14, 4))
+
+    # Контент
+    input = Column(JSONB)    # list[IOObject]
+    output = Column(JSONB)   # list[IOObject]
+    result_url = Column(Text)
+    meta = Column(JSONB)
+
+    # Вспомогательные данные
+    payment_info = Column(JSONB)
+    email_delivery_status = Column(Text, default="not_sent")
+    is_ok = Column(Boolean, default=False)
+    is_paid = Column(Boolean, default=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class Review(Base):
+    __tablename__ = "reviews"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'message_id', name='uq_reviews_user_message'),
+        Index('ix_reviews_message_id', 'message_id'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete='CASCADE'))
+    message_id = Column(Text)
+    reward_given = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Referral(Base):
+    __tablename__ = "referrals"
+    __table_args__ = (
+        UniqueConstraint('inviter_id', 'invitee_id', name='uq_referrals_pair'),
+        Index('ix_referrals_inviter', 'inviter_id'),
+        Index('ix_referrals_invitee', 'invitee_id'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
+    inviter_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete='CASCADE'))
+    invitee_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete='CASCADE'))
+    invitee_paid = Column(Boolean, default=False)
+    reward_given = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Lottery(Base):
+    __tablename__ = "lotteries"
+    __table_args__ = (
+        Index('ix_lotteries_start_date', 'start_date'),
+        Index('ix_lotteries_end_date', 'end_date'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
+    title = Column(Text)
+    description = Column(Text)
+    start_date = Column(DateTime(timezone=True))
+    end_date = Column(DateTime(timezone=True))
+    prizes = Column(JSONB)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LotteryEntry(Base):
+    __tablename__ = "lottery_entries"
+    __table_args__ = (
+        UniqueConstraint('lottery_id', 'user_id', name='uq_lottery_user'),
+        Index('ix_lottery_entries_refcount', 'referral_count'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
+    lottery_id = Column(UUID(as_uuid=True), ForeignKey("lotteries.id", ondelete='CASCADE'))
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete='CASCADE'))
+    referral_count = Column(Integer, default=0)
+    social_links = Column(JSONB)
+    reward_given = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Data(Base):
     __tablename__ = "data"
+    __table_args__ = (
+        Index('ix_data_expired_in', 'expired_in'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
-    type = Column(Text, nullable=False)  # image | audio | video | text
+    type = Column(Text, nullable=False)  # image | video | text | audio
     s3_url = Column(Text, nullable=False)
     public_s3_url = Column(Text)
     expired_in = Column(Numeric(20, 0))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-
-class UserHistory(Base):
-    __tablename__ = "user_history"
+class WebhookLog(Base):
+    __tablename__ = "webhook_logs"
+    __table_args__ = (
+        Index('ix_webhook_logs_event_type', 'event_type'),
+        Index('ix_webhook_logs_processed', 'processed'),
+        Index('ix_webhook_logs_created_at', 'created_at'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    result_id = Column(UUID(as_uuid=True), ForeignKey("results.id"))
+    event_type = Column(Text)
+    payload = Column(JSONB)
+    processed = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-

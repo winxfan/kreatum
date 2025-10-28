@@ -17,6 +17,7 @@ services:
       - redis
     volumes:
       - ../backend/app:/app/app:rw
+      - ./certs/root.crt:/certs/root.crt:ro
 
   worker:
     build:
@@ -30,6 +31,7 @@ services:
       - redis
     volumes:
       - ../backend/app:/app/app:rw
+      - ./certs/root.crt:/certs/root.crt:ro
 
   # frontend:
   #   build:

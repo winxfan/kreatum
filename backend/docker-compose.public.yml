@@ -1,0 +1,170 @@
+# version: '3.8'
+
+services:
+  # Публичный API
+  public-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
+      - PYTHONPATH=/app
+      - PYTORCH_ENABLE_MPS_FALLBACK=1
+      - TRANSFORMERS_CACHE=/app/transformers_cache
+      - HF_HOME=/app/huggingface_cache
+    volumes:
+      - .:/app
+      - ./certs/root.crt:/certs/root.crt:ro
+      - ./models:/app/models  # папка для моделей
+      - ./transformers_cache:/app/transformers_cache  # кэш для transformers
+      - ./huggingface_cache:/app/huggingface_cache  # кэш для huggingface
+    depends_on:
+      - rabbitmq
+      - redis
+    command: ["uvicorn", "main:main_app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Воркеры для визуального поиска
+  visual-search-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
+      - PYTHONPATH=/app
+      - PYTORCH_ENABLE_MPS_FALLBACK=1
+      - TRANSFORMERS_CACHE=/app/transformers_cache
+      - HF_HOME=/app/huggingface_cache
+    volumes:
+      - .:/app
+      - ./datasets:/app/datasets
+      - ./runs:/app/runs
+      - ./certs:/certs
+      - ./certs/root.crt:/certs/root.crt:ro
+      - ./models:/app/models  # Папка для загруженных моделей
+      - ./transformers_cache:/app/transformers_cache  # кэш для transformers
+      - ./huggingface_cache:/app/huggingface_cache  # кэш для huggingface
+    depends_on:
+      - rabbitmq
+      - redis
+    deploy:
+      replicas: 2  # Несколько воркеров для масштабирования
+    command: ["celery", "-A", "celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+
+  # YOLO detection воркер (отдельно для детекции)
+  detection-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
+      - PYTHONPATH=/app
+      - PYTORCH_ENABLE_MPS_FALLBACK=1
+      - WORKER_TYPE=detection
+      - TRANSFORMERS_CACHE=/app/transformers_cache
+      - HF_HOME=/app/huggingface_cache
+    volumes:
+      - .:/app
+      - ./models:/app/models
+      - ./certs:/certs
+      - ./certs/root.crt:/certs/root.crt:ro
+      - ./transformers_cache:/app/transformers_cache  # кэш для transformers
+      - ./huggingface_cache:/app/huggingface_cache  # кэш для huggingface
+    depends_on:
+      - rabbitmq
+      - redis
+    command: ["celery", "-A", "celery_app", "worker", "--loglevel=info", "--concurrency=1", "-Q", "detection"]
+
+  # CLIP search воркер (отдельно для поиска)
+  search-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672//
+      - PYTHONPATH=/app
+      - PYTORCH_ENABLE_MPS_FALLBACK=1
+      - WORKER_TYPE=search
+      - TRANSFORMERS_CACHE=/app/transformers_cache
+      - HF_HOME=/app/huggingface_cache
+    volumes:
+      - .:/app
+      - ./models:/app/models
+      - ./certs:/certs
+      - ./certs/root.crt:/certs/root.crt:ro
+      - ./transformers_cache:/app/transformers_cache  # кэш для transformers
+      - ./huggingface_cache:/app/huggingface_cache  # кэш для huggingface
+    depends_on:
+      - rabbitmq
+      - redis
+    deploy:
+      replicas: 3  # Больше воркеров для поиска
+    command: ["celery", "-A", "celery_app", "worker", "--loglevel=info", "--concurrency=1", "-Q", "search"]
+
+  # RabbitMQ для очередей
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    environment:
+      - RABBITMQ_ERLANG_COOKIE=visual_search_cookie
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_LOGS=/var/log/rabbitmq/rabbit.log
+      - RABBITMQ_SASL_LOGS=/var/log/rabbitmq/rabbit-sasl.log
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - rabbitmq_log:/var/log/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Redis для кэширования
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+
+  # Flower для мониторинга Celery
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - rabbitmq
+      - redis
+    command: ["celery", "-A", "celery_app", "flower", "--port=5555"]
+
+  # Nginx для балансировки нагрузки (опционально)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - public-api
+    profiles:
+      - production
+
+volumes:
+  rabbitmq_data:
+    driver: local
+  rabbitmq_log:
+    driver: local
+  redis_data:
+    driver: local 
