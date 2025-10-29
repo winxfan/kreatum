@@ -5,7 +5,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.declarative import declarative_base
-from app.utils import default_uuid
+from utils import default_uuid
 
 Base = declarative_base()
 
@@ -54,6 +54,31 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+class Category(Base):
+    __tablename__ = "categories"
+    __table_args__ = (
+        UniqueConstraint('slug', name='uq_categories_slug'),
+        Index('ix_categories_title', 'title'),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
+    slug = Column(Text, nullable=False)
+    title = Column(Text, nullable=False)
+    description = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Format(Base):
+    __tablename__ = "formats"
+    __table_args__ = (
+        UniqueConstraint('code', name='uq_formats_code'),
+        Index('ix_formats_code', 'code'),
+    )
+
+    # Используем понятный стабильный ключ вместо UUID, чтобы FKs в Model оставались читаемыми
+    code = Column(Text, primary_key=True)  # audio | video | image | text | speech | json
+    title = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class Model(Base):
     __tablename__ = "models"
     __table_args__ = (
@@ -72,8 +97,9 @@ class Model(Base):
     cost_per_unit_tokens = Column(Numeric(14, 4), default=0)
     currency = Column(String(3), default="USD")
 
-    format_from = Column(JSONB, nullable=False)
-    format_to = Column(JSONB, nullable=False)
+    # Форматы вынесены в справочник formats (по коду)
+    format_from = Column(Text, ForeignKey("formats.code", ondelete='RESTRICT'), nullable=False)
+    format_to = Column(Text, ForeignKey("formats.code", ondelete='RESTRICT'), nullable=False)
 
     banner_image_url = Column(Text)
     hint = Column(Text)

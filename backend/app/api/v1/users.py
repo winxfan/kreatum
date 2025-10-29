@@ -1,14 +1,125 @@
+from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.db.models import User
+from app.db.models import User, Referral
 
-router = APIRouter(prefix="/user", tags=["user"]) 
+router = APIRouter(prefix="/users", tags=["Users"]) 
 
 
-@router.get("")
-def get_user(user_id: str | None = None, anon_user_id: str | None = None, email: str | None = None, db: Session = Depends(get_db)) -> dict:
+def _serialize_user(user: User) -> dict:
+    return {
+        "id": str(user.id),
+        "telegramId": user.telegram_id,
+        "username": user.username,
+        "anonUserId": user.anon_user_id,
+        "email": user.email,
+        "avatarUrl": user.avatar_url,
+        "balanceTokens": float(user.balance_tokens or 0),
+        "refCode": user.ref_code,
+        "referrerId": str(user.referrer_id) if user.referrer_id else None,
+        "hasLeftReview": user.has_left_review,
+        "consentPd": user.consent_pd,
+        "createdAt": user.created_at.isoformat() if user.created_at else None,
+        "updatedAt": user.updated_at.isoformat() if user.updated_at else None,
+    }
+
+
+@router.post("/register-or-login")
+def register_or_login(payload: dict, db: Session = Depends(get_db)) -> dict:
+    telegram_id = payload.get("telegramId")
+    if not telegram_id:
+        raise HTTPException(status_code=400, detail="telegramId is required")
+
+    username = payload.get("username")
+    anon_user_id = payload.get("anonUserId")
+    ref_code = payload.get("refCode")
+
+    user = db.query(User).filter(User.telegram_id == str(telegram_id)).first()
+    if not user:
+        user = User(
+            telegram_id=str(telegram_id),
+            username=username,
+            anon_user_id=anon_user_id,
+        )
+        # генерируем свой реф-код, если пустой
+        user.ref_code = user.ref_code or uuid4().hex[:8]
+        # применяем реферал, если передан и валиден
+        if ref_code and ref_code != user.ref_code:
+            inviter = db.query(User).filter(User.ref_code == ref_code).first()
+            if inviter and inviter.id != user.id:
+                user.referrer_id = inviter.id
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        # создаём запись Referral (без бонусов, они начисляются при оплате)
+        if user.referrer_id:
+            existing = (
+                db.query(Referral)
+                .filter(Referral.inviter_id == user.referrer_id, Referral.invitee_id == user.id)
+                .first()
+            )
+            if existing is None:
+                db.add(Referral(inviter_id=user.referrer_id, invitee_id=user.id))
+                db.commit()
+
+    else:
+        # обновим дублирующиеся поля
+        changed = False
+        if username and user.username != username:
+            user.username = username
+            changed = True
+        if anon_user_id and not user.anon_user_id:
+            user.anon_user_id = anon_user_id
+            changed = True
+        if not user.ref_code:
+            user.ref_code = uuid4().hex[:8]
+            changed = True
+        if changed:
+            db.commit()
+            db.refresh(user)
+
+    return _serialize_user(user)
+
+
+@router.get("/{user_id}")
+def get_user_by_id(user_id: str, db: Session = Depends(get_db)) -> dict:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _serialize_user(user)
+
+
+@router.patch("/{user_id}/consent")
+def update_consent(user_id: str, payload: dict, db: Session = Depends(get_db)) -> dict:
+    consent_pd = payload.get("consentPd")
+    if consent_pd is None:
+        raise HTTPException(status_code=400, detail="consentPd is required")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.consent_pd = bool(consent_pd)
+    db.commit()
+    db.refresh(user)
+    return _serialize_user(user)
+
+
+@router.get("/{user_id}/balance")
+def get_balance(user_id: str, db: Session = Depends(get_db)) -> dict:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"balanceTokens": float(user.balance_tokens or 0)}
+
+
+# Сохранённая назад совместимость со старым фронтом: /api/v1/user?user_id=..
+legacy_router = APIRouter(prefix="/user", tags=["user"]) 
+
+
+@legacy_router.get("")
+def legacy_get_user(user_id: str | None = None, anon_user_id: str | None = None, email: str | None = None, db: Session = Depends(get_db)) -> dict:
     query = db.query(User)
     if user_id:
         query = query.filter(User.id == user_id)
@@ -17,32 +128,12 @@ def get_user(user_id: str | None = None, anon_user_id: str | None = None, email:
     elif email:
         query = query.filter(User.email == email)
     else:
-        # Чтобы не ломать фронт, возвращаем прежний формат, если идентификатор не передан
         return {"id": "stub", "balance_tokens": 0, "tariff": None}
 
     user = query.first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return {
-        "id": str(user.id),
-        "telegram_id": user.telegram_id,
-        "username": user.username,
-        "anon_user_id": user.anon_user_id,
-        "email": user.email,
-        "avatar_url": user.avatar_url,
-        "balance_tokens": float(user.balance_tokens or 0),
-        "ref_code": user.ref_code,
-        "referrer_id": str(user.referrer_id) if user.referrer_id else None,
-        "has_left_review": user.has_left_review,
-        "consent_pd": user.consent_pd,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
-        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
-    }
+    return _serialize_user(user)
 
-
-@router.post("/tariff/change")
-def change_tariff(tariff_id: str) -> dict:
-    # Тарифов в модели нет — оставляем заглушку
-    return {"ok": True, "tariff_id": tariff_id}
 

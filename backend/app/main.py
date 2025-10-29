@@ -1,10 +1,11 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Depends
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
 from app.core.config import settings
-from app.api.v1 import auth, models, runs, jobs, transactions, users, webhooks
+from app.api.deps import require_api_key
+from app.api.v1 import auth, models, runs, jobs, transactions, users, webhooks, data, payments, referrals, reviews, subscriptions, lotteries, tariffs
 
 app = FastAPI(
     title="Neurolibrary API",
@@ -32,12 +33,20 @@ app.add_middleware(
 
 api_v1 = APIRouter(prefix="/api/v1")
 api_v1.include_router(auth.router)
-api_v1.include_router(models.router)
-api_v1.include_router(runs.router)
-api_v1.include_router(jobs.router)
-api_v1.include_router(transactions.router)
-api_v1.include_router(users.router)
-api_v1.include_router(webhooks.router)
+api_v1.include_router(models.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(runs.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(jobs.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(transactions.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(users.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(users.legacy_router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(data.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(payments.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(referrals.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(reviews.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(subscriptions.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(lotteries.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(tariffs.router, dependencies=[Depends(require_api_key)])
+api_v1.include_router(webhooks.router)  # вебхуки без API-ключа
 
 app.include_router(api_v1)
 

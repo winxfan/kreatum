@@ -107,11 +107,6 @@ async def oauth_callback_public(request: Request, provider: str):
     return await _handle_oauth_callback(request, provider)
 
 
-@router.post("/logout")
-def logout() -> dict:
-    return {"ok": True}
-
-
 @router.get("/user/me")
 def user_me() -> dict:
     return {"id": "stub", "name": "Guest", "balance_tokens": 0}

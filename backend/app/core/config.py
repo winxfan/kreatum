@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     backend_public_base_url: str | None = Field(default=None, alias="BACKEND_PUBLIC_BASE_URL")
 
     # Misc
+    server_api_key: str | None = Field(default=None, alias="SERVER_API_KEY")
     telegram_bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
     telegram_ref_check_secret: str | None = Field(default=None, alias="TELEGRAM_REF_CHECK_SECRET")
 
