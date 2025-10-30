@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     frontend_return_url_base: str | None = Field(default=None, alias="FRONTEND_RETURN_URL_BASE")
     backend_public_base_url: str | None = Field(default=None, alias="BACKEND_PUBLIC_BASE_URL")
 
+    # FAL.AI
+    fal_key: str | None = Field(default=None, alias="FAL_KEY")
+    fal_endpoint: str | None = Field(
+        default="fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
+        alias="FAL_ENDPOINT",
+    )
+    fal_webhook_token: str | None = Field(default=None, alias="FAL_WEBHOOK_TOKEN")
+    # Для обратной ссылки вебхука; если PUBLIC_API_BASE_URL не задан, используем BACKEND_PUBLIC_BASE_URL
+    public_api_base_url: str | None = Field(default=None, alias="PUBLIC_API_BASE_URL")
+
     # Misc
     server_api_key: str | None = Field(default=None, alias="SERVER_API_KEY")
     telegram_bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")

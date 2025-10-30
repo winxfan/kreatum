@@ -1,21 +1,43 @@
 from typing import Any, Dict, List, Optional
 import os
-import fal_client
 import requests
 import logging
 import json as _json
 
-from app.config import settings
-from app.utils.s3_utils import parse_s3_url, get_file_url_with_expiry
+# fal_client может отсутствовать в окружении контейнера; делаем импорт опциональным
+try:
+	import fal_client  # type: ignore
+except ImportError:
+	fal_client = None  # type: ignore
+
+from app.core.config import settings
+
+# Опциональные утилиты работы с S3: если отсутствуют — используем безопасные заглушки
+try:
+	from app.utils.s3_utils import parse_s3_url, get_file_url_with_expiry  # type: ignore
+except Exception:
+	def parse_s3_url(url: str) -> tuple[str, str]:  # fallback
+		if not url.startswith("s3://"):
+			raise ValueError("Not an s3 url")
+		without_scheme = url[len("s3://") :]
+		bucket, _, key = without_scheme.partition("/")
+		return bucket, key
+
+	def get_file_url_with_expiry(bucket: str, key: str) -> tuple[str, int | None]:  # fallback
+		# Возвращаем s3:// как есть — FAL ожидает https, поэтому желательно передавать публичный URL
+		return f"s3://{bucket}/{key}", None
 
 
 logger = logging.getLogger("livephoto.fal")
 
 # Ensure API key is set for fal_client
-os.environ.setdefault("FAL_KEY", settings.fal_key)
+if settings.fal_key:
+	os.environ.setdefault("FAL_KEY", settings.fal_key)
 
 
 def upload_file_and_generate(image_path: str, prompt: str, sync_mode: bool = True) -> Dict[str, Any]:
+	if fal_client is None:
+		raise RuntimeError("fal-client не установлен в контейнере. Установите 'fal-client' или используйте submit_generation (HTTP queue API).")
 	logger.info(f"fal.sdk upload_file path={image_path}")
 	uploaded_url = fal_client.upload_file(image_path)
 	logger.info(f"fal.sdk upload_file -> url={uploaded_url}")
@@ -43,6 +65,8 @@ def generate_multiple(image_paths: List[str], prompts: List[str] | None = None, 
 
 def generate_from_url(image_url: str, prompt: str, sync_mode: bool = True) -> Dict[str, Any]:
 	"""Генерация по внешнему URL изображения (presigned S3)."""
+	if fal_client is None:
+		raise RuntimeError("fal-client не установлен в контейнере. Установите 'fal-client' или используйте submit_generation (HTTP queue API).")
 	# Если передан s3:// — преобразуем в публичный presigned URL
 	try:
 		if image_url.startswith("s3://"):
@@ -69,7 +93,8 @@ def submit_generation(image_url: str, prompt: str, order_id: str, item_index: in
 
 	Идемпотентность обеспечиваем на уровне нашего заказа (не запускаем повторно, если есть request_id).
 	"""
-	webhook_url = f"{settings.public_api_base_url}/fal/webhook?order_id={order_id}&item_index={item_index}"
+	base_public = settings.public_api_base_url or settings.backend_public_base_url or ""
+	webhook_url = f"{base_public}/fal/webhook?order_id={order_id}&item_index={item_index}"
 	if settings.fal_webhook_token:
 		webhook_url += f"&token={settings.fal_webhook_token}"
 

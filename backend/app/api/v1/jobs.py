@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.services.fal import submit_generation
 from app.db.models import Job, User
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"]) 
@@ -72,6 +73,49 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     db.add(job)
     db.commit()
     db.refresh(job)
+
+    # Если задача оплачена — ставим генерацию в очередь FAL
+    if job.is_paid and service_type == "animate":
+        try:
+            # Выберем первый подходящий input с изображением
+            image_url: str | None = None
+            for it in input_objects or []:
+                if isinstance(it, dict) and it.get("type") in ("image", None):
+                    if isinstance(it.get("url"), str) and it.get("url"):
+                        image_url = it["url"]
+                        break
+            if not image_url:
+                raise ValueError("image url is required in input[0].url for animate")
+
+            prompt = description or "Animate this image"
+            order_id = str(job.id)
+            # Сохраним order_id в Job для связки с вебхуками
+            job.order_id = order_id
+            db.commit()
+            db.refresh(job)
+
+            fal_resp = submit_generation(
+                image_url=image_url,
+                prompt=prompt,
+                order_id=order_id,
+                item_index=0,
+                anon_user_id=None,
+            )
+            meta = job.meta or {}
+            meta.update({"fal": {"requestId": fal_resp.get("request_id"), "modelId": fal_resp.get("model_id")}})
+            job.meta = meta
+            # Оставляем статус queued; дальнейший прогресс обновится обработчиком вебхуков
+            db.commit()
+            db.refresh(job)
+        except Exception as e:
+            # В случае ошибки ставим failed
+            job.status = "failed"
+            meta = job.meta or {}
+            meta.update({"falError": str(e)})
+            job.meta = meta
+            db.commit()
+            db.refresh(job)
+
     return _serialize_job(job)
 
 
