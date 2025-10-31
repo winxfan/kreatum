@@ -6,6 +6,7 @@ from fastapi.responses import ORJSONResponse
 from app.core.config import settings
 from app.api.deps import require_api_key
 from app.api.v1 import auth, models, runs, jobs, transactions, users, webhooks, data, payments, referrals, reviews, subscriptions, lotteries, tariffs
+from app.api import fal_public
 
 app = FastAPI(
     title="Neurolibrary API",
@@ -52,8 +53,20 @@ app.include_router(api_v1)
 
 # Публичные колбэки OAuth (без /api/v1), например /oauth/yandex/callback
 app.include_router(auth.router_public)
+app.include_router(fal_public.router)  # публичный вебхук от fal.ai
 
 
 @app.get("/health")
 def healthcheck() -> dict:
     return {"status": "ok", "env": settings.environment}
+
+
+# Фоновый поллинг очередь FAL (резервный контур на случай, если вебхук не пришёл)
+import threading
+from app.services.fal_poller import run_poller
+
+
+@app.on_event("startup")
+def start_fal_poller() -> None:
+    t = threading.Thread(target=run_poller, name="fal-poller", args=(20,), daemon=True)
+    t.start()

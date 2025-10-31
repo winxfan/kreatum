@@ -960,3 +960,83 @@ components:
 - Webhook’и могут не требовать `X-API-Key`, но должны проверять подписи провайдеров.
 
 
+## Исходящий вебхук в сервер Telegram‑бота (для реализации на стороне бота)
+
+Мы отправляем простой POST без авторизации на сервер бота:
+- Базовый адрес задаётся `TG_BOT_SERVER_URL`
+- Конечная точка: `POST {TG_BOT_SERVER_URL}/bot/webhook/job-event`
+
+Ниже — Swagger‑фрагмент (OpenAPI) для сервера бота, который принимает это уведомление.
+
+```yaml
+openapi: 3.0.3
+info:
+  title: Telegram Bot Webhook
+  version: 1.0.0
+paths:
+  /bot/webhook/job-event:
+    post:
+      summary: Принять событие задачи от Kreatum backend
+      description: Backend отправляет статусы задач (completed/failed).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event:
+                  type: string
+                  enum: [job.completed, job.failed]
+                jobId:
+                  type: string
+                  format: uuid
+                userId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                status:
+                  type: string
+                  enum: [done, failed]
+                serviceType:
+                  type: string
+                  description: animate | restore | etc.
+                resultUrl:
+                  type: string
+                  format: uri
+                  nullable: true
+                message:
+                  type: string
+                  nullable: true
+                extra:
+                  type: object
+                  additionalProperties: true
+            examples:
+              completed:
+                value:
+                  event: job.completed
+                  jobId: "1e2f3a9c-0f6e-4e2a-8c61-8f6d6c5b3a2c"
+                  userId: "4b8c2a7f-3e1d-4c0f-9b2a-a5f4d8c6e2b1"
+                  status: done
+                  serviceType: animate
+                  resultUrl: "https://s3.example.com/public/videos/user/req/0.mp4?X-Amz-..."
+              failed:
+                value:
+                  event: job.failed
+                  jobId: "1e2f3a9c-0f6e-4e2a-8c61-8f6d6c5b3a2c"
+                  userId: "4b8c2a7f-3e1d-4c0f-9b2a-a5f4d8c6e2b1"
+                  status: failed
+                  serviceType: animate
+                  message: "media url not found"
+      responses:
+        "200":
+          description: OK
+        "204":
+          description: No Content
+```
+
+Заметки:
+- Авторизация не используется (простой POST). При необходимости можно ограничить доступ по IP/ключу на стороне сервера бота.
+- `resultUrl` — presigned URL с ограниченным сроком жизни; лучше не кэшировать надолго.
+
+

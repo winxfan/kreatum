@@ -12,20 +12,8 @@ except ImportError:
 
 from app.core.config import settings
 
-# Опциональные утилиты работы с S3: если отсутствуют — используем безопасные заглушки
-try:
-	from app.utils.s3_utils import parse_s3_url, get_file_url_with_expiry  # type: ignore
-except Exception:
-	def parse_s3_url(url: str) -> tuple[str, str]:  # fallback
-		if not url.startswith("s3://"):
-			raise ValueError("Not an s3 url")
-		without_scheme = url[len("s3://") :]
-		bucket, _, key = without_scheme.partition("/")
-		return bucket, key
-
-	def get_file_url_with_expiry(bucket: str, key: str) -> tuple[str, int | None]:  # fallback
-		# Возвращаем s3:// как есть — FAL ожидает https, поэтому желательно передавать публичный URL
-		return f"s3://{bucket}/{key}", None
+# Утилиты S3 (пресайн ссылок)
+from app.services.s3_utils import parse_s3_url, get_file_url_with_expiry
 
 
 logger = logging.getLogger("livephoto.fal")
@@ -39,7 +27,8 @@ def upload_file_and_generate(image_path: str, prompt: str, sync_mode: bool = Tru
 	if fal_client is None:
 		raise RuntimeError("fal-client не установлен в контейнере. Установите 'fal-client' или используйте submit_generation (HTTP queue API).")
 	logger.info(f"fal.sdk upload_file path={image_path}")
-	uploaded_url = fal_client.upload_file(image_path)
+	public_image_url = get_file_url_with_expiry(settings.s3_bucket_name, image_path)
+	uploaded_url = fal_client.upload_file(public_image_url)
 	logger.info(f"fal.sdk upload_file -> url={uploaded_url}")
 	logger.info(f"fal.sdk subscribe model={settings.fal_endpoint} args={{'prompt': <len={len(prompt)}>, 'image_url': '<uploaded>', 'sync_mode': {sync_mode}}}")
 	result = fal_client.subscribe(

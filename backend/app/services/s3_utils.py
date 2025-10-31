@@ -3,7 +3,7 @@ import mimetypes
 from typing import BinaryIO, Optional
 import boto3
 
-from app.config import settings
+from app.core.config import settings
 
 
 def _s3_client():

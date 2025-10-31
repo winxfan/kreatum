@@ -1,12 +1,16 @@
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import logging
 
 from app.database import get_db
 from app.services.fal import submit_generation
 from app.db.models import Job, User
+from app.services.telegram_service import notify_job_event
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"]) 
+
+logger = logging.getLogger(__name__)
 
 
 def _estimate_tokens(service_type: str) -> int:
@@ -43,12 +47,40 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     service_type = payload.get("serviceType")
     input_objects = payload.get("input")
     description = payload.get("description")
+    logger.info(
+        "create_job: received payload user_id=%s service_type=%s input_count=%s",
+        user_id,
+        service_type,
+        len(input_objects) if isinstance(input_objects, list) else None,
+    )
     if not user_id or not service_type or not isinstance(input_objects, list):
+        logger.warning(
+            "create_job: invalid payload user_id=%s service_type=%s has_input_list=%s",
+            user_id,
+            service_type,
+            isinstance(input_objects, list),
+        )
         raise HTTPException(status_code=400, detail="userId, serviceType, input are required")
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
+        logger.warning("create_job: user not found user_id=%s", user_id)
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Предварительная валидация входа для анимации: требуется image_url
+    image_url: str | None = None
+    if service_type == "animate":
+        for it in input_objects or []:
+            if isinstance(it, dict) and it.get("type") in ("image", None):
+                url_val = it.get("url")
+                if isinstance(url_val, str) and url_val:
+                    image_url = url_val
+                    break
+        if not image_url:
+            logger.warning(
+                "create_job: missing image url for animate user_id=%s", user_id
+            )
+            raise HTTPException(status_code=400, detail="image url is required in input[0].url for animate")
 
     tokens_needed = _estimate_tokens(service_type)
     job = Job(
@@ -66,9 +98,19 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
         job.tokens_reserved = Decimal(tokens_needed)
         job.is_paid = True
         job.status = "queued"
+        logger.info(
+            "create_job: tokens reserved (%s) for user_id=%s, job will be queued",
+            tokens_needed,
+            user.id,
+        )
     else:
         job.is_paid = False
         job.status = "waiting_payment"
+        logger.info(
+            "create_job: insufficient tokens for user_id=%s, needed=%s, status=waiting_payment",
+            user.id,
+            tokens_needed,
+        )
 
     db.add(job)
     db.commit()
@@ -77,15 +119,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     # Если задача оплачена — ставим генерацию в очередь FAL
     if job.is_paid and service_type == "animate":
         try:
-            # Выберем первый подходящий input с изображением
-            image_url: str | None = None
-            for it in input_objects or []:
-                if isinstance(it, dict) and it.get("type") in ("image", None):
-                    if isinstance(it.get("url"), str) and it.get("url"):
-                        image_url = it["url"]
-                        break
-            if not image_url:
-                raise ValueError("image url is required in input[0].url for animate")
+            # image_url уже провалидирован выше
 
             prompt = description or "Animate this image"
             order_id = str(job.id)
@@ -94,6 +128,11 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
             db.commit()
             db.refresh(job)
 
+            logger.info(
+                "create_job: submitting to FAL job_id=%s order_id=%s",
+                job.id,
+                order_id,
+            )
             fal_resp = submit_generation(
                 image_url=image_url,
                 prompt=prompt,
@@ -107,20 +146,54 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
             # Оставляем статус queued; дальнейший прогресс обновится обработчиком вебхуков
             db.commit()
             db.refresh(job)
+            logger.info(
+                "create_job: FAL submitted job_id=%s request_id=%s model_id=%s",
+                job.id,
+                (fal_resp or {}).get("request_id"),
+                (fal_resp or {}).get("model_id"),
+            )
         except Exception as e:
-            # В случае ошибки ставим failed
-            job.status = "failed"
-            meta = job.meta or {}
-            meta.update({"falError": str(e)})
-            job.meta = meta
-            db.commit()
-            db.refresh(job)
+            # В случае ошибки: откатываем резерв, помечаем failed и возвращаем 502
+            try:
+                tokens_to_return = int(job.tokens_reserved or 0)
+                if tokens_to_return and job.user_id:
+                    user_refund = db.query(User).filter(User.id == job.user_id).first()
+                    if user_refund:
+                        user_refund.balance_tokens = (user_refund.balance_tokens or 0) + tokens_to_return
+                job.tokens_reserved = 0
+                job.is_paid = False
+                job.status = "failed"
+                meta = job.meta or {}
+                meta.update({"falError": str(e)})
+                job.meta = meta
+                db.commit()
+                db.refresh(job)
+            finally:
+                logger.exception(
+                    "create_job: FAL submission failed job_id=%s, tokens_refunded=%s",
+                    job.id,
+                    tokens_to_return if 'tokens_to_return' in locals() else 0,
+                )
+            # уведомим Telegram о неуспехе
+            try:
+                notify_job_event(
+                    event="job.failed",
+                    job_id=str(job.id),
+                    user_id=str(job.user_id) if job.user_id else None,
+                    status="failed",
+                    service_type=job.service_type,
+                    message=str(e),
+                )
+            except Exception:
+                logger.exception("notify telegram failed for job_id=%s", job.id)
+            raise HTTPException(status_code=502, detail=f"FAL submission failed: {e}")
 
     return _serialize_job(job)
 
 
 @router.get("")
 def list_jobs(userId: str, db: Session = Depends(get_db)) -> list[dict]:
+    logger.debug("list_jobs: user_id=%s", userId)
     items = (
         db.query(Job)
         .filter(Job.user_id == userId)
@@ -132,6 +205,7 @@ def list_jobs(userId: str, db: Session = Depends(get_db)) -> list[dict]:
 
 @router.get("/{job_id}")
 def get_job(job_id: str, db: Session = Depends(get_db)) -> dict:
+    logger.debug("get_job: job_id=%s", job_id)
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -143,14 +217,22 @@ def cancel_job(job_id: str, db: Session = Depends(get_db)) -> dict:
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    tokens_returned = 0
     if job.is_paid and job.tokens_reserved and job.user_id:
         user = db.query(User).filter(User.id == job.user_id).first()
         if user:
             user.balance_tokens = (user.balance_tokens or 0) + (job.tokens_reserved or 0)
+            tokens_returned = int(job.tokens_reserved or 0)
     job.tokens_reserved = 0
     job.is_paid = False
     # в нашей БД нет статуса canceled — установим failed
     job.status = "failed"
+    logger.info(
+        "cancel_job: job_id=%s user_id=%s tokens_returned=%s",
+        job_id,
+        str(job.user_id) if job.user_id else None,
+        tokens_returned,
+    )
     db.commit()
     db.refresh(job)
     return _serialize_job(job)

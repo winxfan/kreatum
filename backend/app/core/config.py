@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     server_api_key: str | None = Field(default=None, alias="SERVER_API_KEY")
     telegram_bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
     telegram_ref_check_secret: str | None = Field(default=None, alias="TELEGRAM_REF_CHECK_SECRET")
+    telegram_webhook_url: str | None = Field(default=None, alias="TELEGRAM_WEBHOOK_URL")
+    tg_bot_server_url: str | None = Field(default=None, alias="TG_BOT_SERVER_URL")
 
     # Pricing
     usd_to_rub: float = Field(default=100.0, alias="USD_TO_RUB")
