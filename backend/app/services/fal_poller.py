@@ -35,8 +35,8 @@ def run_poller(interval_seconds: int = 20) -> None:
     """Бесконечный цикл поллинга очереди FAL для задач в статусах queued/processing."""
     logger.info("fal.poll: started interval=%ss", interval_seconds)
     while True:
-        time.sleep(interval_seconds)
         try:
+            logger.info("fal.poll: tick start")
             db: Session = SessionLocal()
             try:
                 # Выбираем оплаченные задачи, ожидающие исполнения
@@ -121,5 +121,8 @@ def run_poller(interval_seconds: int = 20) -> None:
             logger.exception("fal.poll: unexpected loop error")
             # защита от tight loop — продолжим через интервал
             continue
+        finally:
+            logger.info("fal.poll: tick end")
+            time.sleep(interval_seconds)
 
 

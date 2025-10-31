@@ -79,10 +79,7 @@ def submit_generation(image_url: str, prompt: str, order_id: str, item_index: in
 
 	Идемпотентность обеспечиваем на уровне нашего заказа (не запускаем повторно, если есть request_id).
 	"""
-	base_public = settings.public_api_base_url or settings.backend_public_base_url or ""
-	webhook_url = f"{base_public}/fal/webhook?order_id={order_id}&item_index={item_index}"
-	if settings.fal_webhook_token:
-		webhook_url += f"&token={settings.fal_webhook_token}"
+	# Вариант без вебхука: статус будет обновляться только поллером
 
 	# Убедимся, что image_url публичный (presigned), если пришёл как s3://
 	if image_url.startswith("s3://"):
@@ -101,11 +98,10 @@ def submit_generation(image_url: str, prompt: str, order_id: str, item_index: in
 	payload = {
 		"prompt": prompt,
 		"image_url": image_url,
-		"webhook_url": webhook_url,
 	}
 	log_headers = {**headers, "Authorization": "Key ****"}
 	logger.info(
-		f"fal.http POST {queue_url} headers={log_headers} json={_json.dumps({**payload, 'image_url': ('<https>' if str(payload.get('image_url','')).startswith('http') else payload.get('image_url'))})[:2000]}"
+		f"fal.http POST {queue_url} (no-webhook) headers={log_headers} json={_json.dumps({**payload, 'image_url': ('<https>' if str(payload.get('image_url','')).startswith('http') else payload.get('image_url'))})[:2000]}"
 	)
 	resp = requests.post(queue_url, json=payload, headers=headers, timeout=30)
 	resp.raise_for_status()

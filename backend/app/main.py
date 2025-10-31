@@ -68,5 +68,7 @@ from app.services.fal_poller import run_poller
 
 @app.on_event("startup")
 def start_fal_poller() -> None:
+    import logging
+    logging.getLogger(__name__).info("startup: starting fal poller thread (interval=20s)")
     t = threading.Thread(target=run_poller, name="fal-poller", args=(20,), daemon=True)
     t.start()
