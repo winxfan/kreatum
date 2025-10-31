@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     s3_secret_access_key: str | None = Field(default=None, alias="S3_SECRET_ACCESS_KEY")
     s3_bucket_name: str | None = Field(default=None, alias="S3_BUCKET_NAME")
     s3_region_name: str | None = Field(default=None, alias="S3_REGION_NAME")
+    s3_presign_ttl_seconds: int = Field(default=3600, alias="S3_PRESIGN_TTL_SECONDS")
 
     # Payments
     yookassa_shop_id: str | None = Field(default=None, alias="YOOKASSA_SHOP_ID")

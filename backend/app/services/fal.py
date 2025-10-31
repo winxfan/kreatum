@@ -27,8 +27,8 @@ def upload_file_and_generate(image_path: str, prompt: str, sync_mode: bool = Tru
 	if fal_client is None:
 		raise RuntimeError("fal-client не установлен в контейнере. Установите 'fal-client' или используйте submit_generation (HTTP queue API).")
 	logger.info(f"fal.sdk upload_file path={image_path}")
-	public_image_url = get_file_url_with_expiry(settings.s3_bucket_name, image_path)
-	uploaded_url = fal_client.upload_file(public_image_url)
+	# fal_client.upload_file ожидает локальный путь к файлу; не подменяем на S3 URL
+	uploaded_url = fal_client.upload_file(image_path)
 	logger.info(f"fal.sdk upload_file -> url={uploaded_url}")
 	logger.info(f"fal.sdk subscribe model={settings.fal_endpoint} args={{'prompt': <len={len(prompt)}>, 'image_url': '<uploaded>', 'sync_mode': {sync_mode}}}")
 	result = fal_client.subscribe(
@@ -57,12 +57,9 @@ def generate_from_url(image_url: str, prompt: str, sync_mode: bool = True) -> Di
 	if fal_client is None:
 		raise RuntimeError("fal-client не установлен в контейнере. Установите 'fal-client' или используйте submit_generation (HTTP queue API).")
 	# Если передан s3:// — преобразуем в публичный presigned URL
-	try:
-		if image_url.startswith("s3://"):
-			b, k = parse_s3_url(image_url)
-			image_url, _ = get_file_url_with_expiry(b, k)
-	except Exception:
-		pass
+	if image_url.startswith("s3://"):
+		b, k = parse_s3_url(image_url)
+		image_url, _ = get_file_url_with_expiry(b, k)
 	logger.info(f"fal.sdk subscribe model={settings.fal_endpoint} args={{'prompt': <len={len(prompt)}>, 'image_url': '<url>', 'sync_mode': {sync_mode}}}")
 	result = fal_client.subscribe(
 		settings.fal_endpoint,
@@ -88,12 +85,12 @@ def submit_generation(image_url: str, prompt: str, order_id: str, item_index: in
 		webhook_url += f"&token={settings.fal_webhook_token}"
 
 	# Убедимся, что image_url публичный (presigned), если пришёл как s3://
-	try:
+	if image_url.startswith("s3://"):
+		b, k = parse_s3_url(image_url)
+		image_url, _ = get_file_url_with_expiry(b, k)
 		if image_url.startswith("s3://"):
-			b, k = parse_s3_url(image_url)
-			image_url, _ = get_file_url_with_expiry(b, k)
-	except Exception:
-		pass
+			# если по какой-то причине не преобразовалось — явно падаем
+			raise ValueError("submit_generation: failed to presign s3 image url")
 
 	# HTTP Queue API (без использования fal_client.queue)
 	queue_url = f"https://queue.fal.run/{settings.fal_endpoint}"
@@ -107,7 +104,9 @@ def submit_generation(image_url: str, prompt: str, order_id: str, item_index: in
 		"webhook_url": webhook_url,
 	}
 	log_headers = {**headers, "Authorization": "Key ****"}
-	logger.info(f"fal.http POST {queue_url} headers={log_headers} json={_json.dumps(payload)[:2000]}")
+	logger.info(
+		f"fal.http POST {queue_url} headers={log_headers} json={_json.dumps({**payload, 'image_url': ('<https>' if str(payload.get('image_url','')).startswith('http') else payload.get('image_url'))})[:2000]}"
+	)
 	resp = requests.post(queue_url, json=payload, headers=headers, timeout=30)
 	resp.raise_for_status()
 	data = resp.json()
