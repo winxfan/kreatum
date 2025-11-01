@@ -50,6 +50,7 @@ class User(Base):
 
     has_left_review = Column(Boolean, default=False)
     consent_pd = Column(Boolean, default=False)
+    is_joined_in_channel = Column(Boolean, default=False)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
