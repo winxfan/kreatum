@@ -143,6 +143,9 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
             meta = job.meta or {}
             meta.update({"fal": {"requestId": fal_resp.get("request_id"), "modelId": fal_resp.get("model_id")}})
             job.meta = meta
+            # Сохраняем request_id FAL в отдельное поле для быстрого доступа поллером
+            if fal_resp.get("request_id"):
+                job.request_id = str(fal_resp.get("request_id"))
             # Оставляем статус queued; дальнейший прогресс обновится обработчиком вебхуков
             db.commit()
             db.refresh(job)

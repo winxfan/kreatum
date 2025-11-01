@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     s3_bucket_name: str | None = Field(default=None, alias="S3_BUCKET_NAME")
     s3_region_name: str | None = Field(default=None, alias="S3_REGION_NAME")
     s3_presign_ttl_seconds: int = Field(default=3600, alias="S3_PRESIGN_TTL_SECONDS")
+    # S3 key prefixes
+    uploads_prefix: str = Field(default="uploads/", alias="UPLOADS_PREFIX")
+    videos_prefix: str = Field(default="videos/", alias="VIDEOS_PREFIX")
 
     # Payments
     yookassa_shop_id: str | None = Field(default=None, alias="YOOKASSA_SHOP_ID")
@@ -56,6 +59,7 @@ class Settings(BaseSettings):
     fal_webhook_token: str | None = Field(default=None, alias="FAL_WEBHOOK_TOKEN")
     # Для обратной ссылки вебхука; если PUBLIC_API_BASE_URL не задан, используем BACKEND_PUBLIC_BASE_URL
     public_api_base_url: str | None = Field(default=None, alias="PUBLIC_API_BASE_URL")
+    fal_poll_interval_seconds: int = Field(default=20, alias="FAL_POLL_INTERVAL_SECONDS")
 
     # Misc
     server_api_key: str | None = Field(default=None, alias="SERVER_API_KEY")

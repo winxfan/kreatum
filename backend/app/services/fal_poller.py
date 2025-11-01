@@ -14,7 +14,8 @@ from app.core.config import settings
 from app.services.telegram_service import notify_job_event
 
 
-logger = logging.getLogger(__name__)
+# Используем uvicorn.error, чтобы гарантировать попадание в стандартные логи сервера
+logger = logging.getLogger("uvicorn.error")
 
 
 def _pick_media_url(request_status: dict, request_response: dict) -> Optional[str]:
@@ -46,21 +47,36 @@ def run_poller(interval_seconds: int = 20) -> None:
                     .filter(Job.status.in_(["queued", "processing"]))
                     .all()
                 )
+                logger.info("fal.poll: active jobs count=%s", len(jobs))
                 for job in jobs:
                     fal_meta = (job.meta or {}).get("fal") if isinstance(job.meta, dict) else None
-                    request_id = fal_meta.get("requestId") if isinstance(fal_meta, dict) else None
+                    request_id = (getattr(job, "request_id", None) or (fal_meta.get("requestId") if isinstance(fal_meta, dict) else None))
                     model_id = fal_meta.get("modelId") if isinstance(fal_meta, dict) else None
                     if not request_id:
                         continue
 
                     try:
+                        logger.info(
+                            "fal.poll: job begin job_id=%s status=%s request_id=%s model_id=%s",
+                            job.id,
+                            job.status,
+                            request_id,
+                            model_id,
+                        )
                         st = get_request_status(request_id, logs=False, model_id=model_id)
                         st_status = (st.get("status") or "").upper()
+                        logger.info(
+                            "fal.poll: status job_id=%s request_id=%s status=%s",
+                            job.id,
+                            request_id,
+                            st_status,
+                        )
                         if st_status == "IN_PROGRESS":
                             if job.status != "processing":
                                 job.status = "processing"
                                 db.commit()
                                 db.refresh(job)
+                                logger.info("fal.poll: job moved to processing job_id=%s", job.id)
                             continue
                         if st_status == "COMPLETED":
                             resp = get_request_response(request_id, model_id=model_id)
@@ -70,6 +86,7 @@ def run_poller(interval_seconds: int = 20) -> None:
                                 job.status = "failed"
                                 db.commit()
                                 db.refresh(job)
+                                logger.warning("fal.poll: media url not found job_id=%s request_id=%s", job.id, request_id)
                                 notify_job_event(
                                     event="job.failed",
                                     job_id=str(job.id),
@@ -82,13 +99,29 @@ def run_poller(interval_seconds: int = 20) -> None:
 
                             # Скачиваем и кладем в S3
                             video_bytes = fetch_bytes(media_url, timeout=180)
+                            logger.info(
+                                "fal.poll: fetched media bytes job_id=%s bytes=%s url=%s",
+                                job.id,
+                                len(video_bytes) if isinstance(video_bytes, (bytes, bytearray)) else None,
+                                media_url,
+                            )
                             key = s3_key_for_video(job.anon_user_id or "user", job.order_id or str(job.id), 0, ".mp4")
                             upload_bytes(settings.s3_bucket_name or "", key, video_bytes, content_type="video/mp4")
+                            logger.info(
+                                "fal.poll: uploaded to s3 bucket=%s key=%s",
+                                settings.s3_bucket_name,
+                                key,
+                            )
                             public_url, _ = get_file_url_with_expiry(settings.s3_bucket_name or "", key)
                             job.result_url = public_url
                             job.status = "done"
                             db.commit()
                             db.refresh(job)
+                            logger.info(
+                                "fal.poll: job completed job_id=%s result_url=%s",
+                                job.id,
+                                public_url,
+                            )
 
                             notify_job_event(
                                 event="job.completed",
@@ -103,6 +136,12 @@ def run_poller(interval_seconds: int = 20) -> None:
                             job.status = "failed"
                             db.commit()
                             db.refresh(job)
+                            logger.warning(
+                                "fal.poll: job failed job_id=%s request_id=%s status=%s",
+                                job.id,
+                                request_id,
+                                st_status,
+                            )
                             notify_job_event(
                                 event="job.failed",
                                 job_id=str(job.id),

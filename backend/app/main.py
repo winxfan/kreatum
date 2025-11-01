@@ -1,4 +1,6 @@
 from fastapi import FastAPI, APIRouter, Depends
+import logging
+import sys
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
@@ -7,6 +9,26 @@ from app.core.config import settings
 from app.api.deps import require_api_key
 from app.api.v1 import auth, models, runs, jobs, transactions, users, webhooks, data, payments, referrals, reviews, subscriptions, lotteries, tariffs
 from app.api import fal_public
+
+def _configure_logging() -> None:
+    """Инициализация базовой конфигурации логирования, если не настроена извне.
+
+    Делает видимыми наши application-логи (logger.info(...)) в выводе Uvicorn/Docker.
+    """
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
+        root_logger.addHandler(handler)
+    root_logger.setLevel(logging.INFO)
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    # шумные логгеры — в WARNING
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+
+_configure_logging()
+
 
 app = FastAPI(
     title="Neurolibrary API",
@@ -69,6 +91,14 @@ from app.services.fal_poller import run_poller
 @app.on_event("startup")
 def start_fal_poller() -> None:
     import logging
-    logging.getLogger(__name__).info("startup: starting fal poller thread (interval=20s)")
-    t = threading.Thread(target=run_poller, name="fal-poller", args=(20,), daemon=True)
+    logging.getLogger("uvicorn.error").info(
+        "startup: starting fal poller thread (interval=%ss)",
+        settings.fal_poll_interval_seconds,
+    )
+    t = threading.Thread(
+        target=run_poller,
+        name="fal-poller",
+        args=(int(settings.fal_poll_interval_seconds),),
+        daemon=True,
+    )
     t.start()

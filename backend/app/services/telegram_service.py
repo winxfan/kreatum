@@ -51,6 +51,20 @@ def notify_job_event(
 
     try:
         logger.info("telegram.webhook POST %s headers=%s body_keys=%s", webhook_url, headers, list(payload.keys()))
+        # Короткий сводный лог полезных полей
+        try:
+            logger.info(
+                "telegram.webhook payload: event=%s jobId=%s userId=%s status=%s serviceType=%s resultUrl=%s",
+                payload.get("event"),
+                payload.get("jobId"),
+                payload.get("userId"),
+                payload.get("status"),
+                payload.get("serviceType"),
+                payload.get("resultUrl"),
+            )
+        except Exception:
+            # не мешаем основному запросу
+            pass
         resp = requests.post(webhook_url, json=payload, headers=headers, timeout=15)
         resp.raise_for_status()
         logger.info("telegram.webhook <- %s", resp.status_code)

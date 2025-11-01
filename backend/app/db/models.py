@@ -139,6 +139,7 @@ class Job(Base):
         Index('ix_jobs_user_status_created', 'user_id', 'status', 'created_at'),
         Index('ix_jobs_model_created', 'model_id', 'created_at'),
         Index('ix_jobs_is_paid', 'is_paid'),
+        Index('ix_jobs_request_id', 'request_id'),
         Index('ix_jobs_input_gin', 'input', postgresql_using='gin'),
         Index('ix_jobs_output_gin', 'output', postgresql_using='gin'),
         CheckConstraint('price_rub IS NULL OR price_rub >= 0', name='ck_jobs_price_nonneg'),
@@ -150,6 +151,7 @@ class Job(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=default_uuid)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete='CASCADE'))
     model_id = Column(UUID(as_uuid=True), ForeignKey("models.id", ondelete='SET NULL'), nullable=True)
+    request_id = Column(UUID(as_uuid=True), nullable=False, default=default_uuid)
 
     # Источники и идентификаторы
     anon_user_id = Column(Text)
