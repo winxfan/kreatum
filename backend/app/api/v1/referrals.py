@@ -21,7 +21,7 @@ def get_link(userId: str, db: Session = Depends(get_db)) -> dict:
         db.commit()
         db.refresh(user)
     # Базовую ссылку можно заменить на реальную
-    ref_link = f"https://t.me/your_bot?start=ref_{user.ref_code}"
+    ref_link = f"https://t.me/kreatum_bot?start=ref_{user.ref_code}"
     return {"refLink": ref_link}
 
 

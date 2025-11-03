@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 def _estimate_tokens(service_type: str) -> int:
     if service_type == "animate":
-        return 100
+        return 89
     if service_type == "restore":
-        return 50
+        return 10
     return 100
 
 

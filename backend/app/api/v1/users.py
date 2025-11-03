@@ -116,6 +116,64 @@ def get_balance(user_id: str, db: Session = Depends(get_db)) -> dict:
     return {"balanceTokens": float(user.balance_tokens or 0)}
 
 
+# Начисление бонуса за оставление отзыва (идемпотентно)
+@router.post("/reviewed/{user_id}", tags=["Reviews"])
+def grant_review_bonus(
+    user_id: str,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    db: Session = Depends(get_db),
+) -> dict:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    bonus_tokens = Decimal(20)
+
+    updated_rows = (
+        db.query(User)
+        .filter(
+            User.id == user_id,
+            or_(User.has_left_review.is_(False), User.has_left_review.is_(None)),
+        )
+        .update(
+            {
+                User.has_left_review: True,
+                User.balance_tokens: func.coalesce(User.balance_tokens, 0) + bonus_tokens,
+            },
+            synchronize_session=False,
+        )
+    )
+
+    bonus_granted = updated_rows == 1
+
+    if bonus_granted:
+        txn = Transaction(
+            user_id=user.id,
+            type="promo",
+            provider="telegram",
+            status="success",
+            tokens_delta=bonus_tokens,
+            currency="RUB",
+            reference="review_bonus",
+            meta={"reason": "review", "idempotencyKey": idempotency_key} if idempotency_key else {"reason": "review"},
+        )
+        db.add(txn)
+        db.commit()
+        db.refresh(user)
+        return {
+            "bonusGranted": True,
+            "alreadyGranted": False,
+            "balanceTokens": float(user.balance_tokens or 0),
+            "message": "Bonus granted",
+        }
+
+    return {
+        "bonusGranted": False,
+        "alreadyGranted": True,
+        "balanceTokens": float(user.balance_tokens or 0),
+        "message": "Already granted",
+    }
+
 # Начисление бонуса за подписку на канал (идемпотентно)
 @router.post("/subscribed/{user_id}", tags=["Subscriptions"])
 def grant_subscription_bonus(

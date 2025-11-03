@@ -7,7 +7,7 @@ from fastapi.responses import ORJSONResponse
 
 from app.core.config import settings
 from app.api.deps import require_api_key
-from app.api.v1 import auth, models, jobs, transactions, users, webhooks, data, payments, referrals, reviews, lotteries, tariffs
+from app.api.v1 import auth, models, jobs, transactions, users, webhooks, data, payments, referrals, lotteries, tariffs
 from app.api import fal_public
 
 def _configure_logging() -> None:
@@ -64,7 +64,6 @@ api_v1.include_router(users.legacy_router, dependencies=[Depends(require_api_key
 api_v1.include_router(data.router, dependencies=[Depends(require_api_key)])
 api_v1.include_router(payments.router, dependencies=[Depends(require_api_key)])
 api_v1.include_router(referrals.router, dependencies=[Depends(require_api_key)])
-api_v1.include_router(reviews.router, dependencies=[Depends(require_api_key)])
 api_v1.include_router(lotteries.router, dependencies=[Depends(require_api_key)])
 api_v1.include_router(tariffs.router, dependencies=[Depends(require_api_key)])
 api_v1.include_router(webhooks.router)  # вебхуки без API-ключа
