@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy import func
+from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -66,5 +67,80 @@ def get_history(userId: str, db: Session = Depends(get_db)) -> list[dict]:
         for r in items
     ]
 
+
+# Применить реф-код: связать пригласившего и приглашённого и начислить бонус (идемпотентно)
+@router.post("/apply")
+def apply_referral_code(payload: dict, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), db: Session = Depends(get_db)) -> dict:
+    ref_code = payload.get("refCode")
+    telegram_id = payload.get("telegramId")
+    if not ref_code:
+        raise HTTPException(status_code=400, detail="refCode is required")
+    if not telegram_id:
+        raise HTTPException(status_code=400, detail="telegramId is required")
+
+    invitee = db.query(User).filter(User.telegram_id == str(telegram_id)).first()
+    if not invitee:
+        raise HTTPException(status_code=404, detail="Invitee (user by telegramId) not found")
+
+    inviter = db.query(User).filter(User.ref_code == ref_code).first()
+    if not inviter:
+        raise HTTPException(status_code=404, detail="Inviter (by refCode) not found")
+
+    if inviter.id == invitee.id:
+        raise HTTPException(status_code=400, detail="Self-referral is not allowed")
+
+    # Проверим, не привязан ли уже этот приглашённый к кому-то
+    existing = db.query(Referral).filter(Referral.invitee_id == invitee.id).first()
+    already_linked = existing is not None
+
+    if not already_linked:
+        # Установим реферера у пользователя, если ещё не стоял
+        if not invitee.referrer_id:
+            invitee.referrer_id = inviter.id
+        # Создадим запись Referral
+        existing = Referral(inviter_id=inviter.id, invitee_id=invitee.id)
+        db.add(existing)
+        db.commit()
+        db.refresh(invitee)
+
+    # Начислим бонус пригласившему, если ещё не начисляли
+    bonus_granted = False
+    bonus_tokens = Decimal(50)
+    if existing.inviter_id == inviter.id and not existing.reward_given:
+        inviter.balance_tokens = (inviter.balance_tokens or 0) + bonus_tokens
+        txn = Transaction(
+            user_id=inviter.id,
+            type="promo",
+            provider="telegram",
+            status="success",
+            tokens_delta=bonus_tokens,
+            currency="RUB",
+            reference="referral_bonus",
+            meta={
+                "reason": "referral",
+                "refCode": ref_code,
+                "inviteeTelegramId": str(telegram_id),
+                **({"idempotencyKey": idempotency_key} if idempotency_key else {}),
+            },
+        )
+        existing.reward_given = True
+        db.add(txn)
+        db.commit()
+        bonus_granted = True
+
+    # Сериализация пригласившего (минимально нужные поля)
+    inviter_info = {
+        "id": str(inviter.id),
+        "telegramId": inviter.telegram_id,
+        "username": inviter.username,
+        "refCode": inviter.ref_code,
+    }
+
+    return {
+        "bonusGranted": bonus_granted,
+        "alreadyLinked": already_linked,
+        "balanceTokens": float(invitee.balance_tokens or 0),
+        "inviter": inviter_info,
+    }
 
 
