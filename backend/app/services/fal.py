@@ -74,7 +74,15 @@ def generate_from_url(image_url: str, prompt: str, sync_mode: bool = True) -> Di
 	return result
 
 
-def submit_generation(image_url: str, prompt: str, order_id: str, item_index: int, anon_user_id: str | None = None) -> Dict[str, Any]:
+def submit_generation(
+    image_url: str,
+    prompt: str,
+    order_id: str,
+    item_index: int,
+    anon_user_id: str | None = None,
+    endpoint: str | None = None,
+    extra_args: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
 	"""Поставить задачу в очередь fal.ai с вебхуком и вернуть request_id.
 
 	Идемпотентность обеспечиваем на уровне нашего заказа (не запускаем повторно, если есть request_id).
@@ -90,7 +98,8 @@ def submit_generation(image_url: str, prompt: str, order_id: str, item_index: in
 			raise ValueError("submit_generation: failed to presign s3 image url")
 
 	# HTTP Queue API (без использования fal_client.queue)
-	queue_url = f"https://queue.fal.run/{settings.fal_endpoint}"
+	use_endpoint = endpoint or settings.fal_endpoint
+	queue_url = f"https://queue.fal.run/{use_endpoint}"
 	headers = {
 		"Authorization": f"Key {settings.fal_key}",
 		"Content-Type": "application/json",
@@ -99,6 +108,13 @@ def submit_generation(image_url: str, prompt: str, order_id: str, item_index: in
 		"prompt": prompt,
 		"image_url": image_url,
 	}
+	# Дополнительные аргументы модели (например, для реставрации фото)
+	if extra_args:
+		for k, v in extra_args.items():
+			# не перетираем обязательные поля, если случайно переданы сверху
+			if k in ("prompt", "image_url"):
+				continue
+			payload[k] = v
 	log_headers = {**headers, "Authorization": "Key ****"}
 	logger.info(
 		f"fal.http POST {queue_url} (no-webhook) headers={log_headers} json={_json.dumps({**payload, 'image_url': ('<https>' if str(payload.get('image_url','')).startswith('http') else payload.get('image_url'))})[:2000]}"
@@ -111,8 +127,8 @@ def submit_generation(image_url: str, prompt: str, order_id: str, item_index: in
 	if not request_id:
 		raise ValueError("fal.ai queue: request_id not found in response")
 	# Сохраним base model id (namespace/model) для последующих запросов
-	parts = (settings.fal_endpoint or "").split("/")
-	base_model = "/".join(parts[:2]) if len(parts) >= 2 else settings.fal_endpoint
+	parts = (use_endpoint or "").split("/")
+	base_model = "/".join(parts[:2]) if len(parts) >= 2 else use_endpoint
 	return {"request_id": request_id, "model_id": base_model}
 
 
@@ -172,8 +188,8 @@ def extract_media_url(payload: Dict[str, Any]) -> Optional[str]:
 							return u
 					elif isinstance(it, str) and it:
 						return it
-		# Массивы выходов
-		for ak in ("videos", "outputs", "files"):
+		# Массивы выходов (добавили images для фото-моделей)
+		for ak in ("videos", "outputs", "files", "images"):
 			arr = data.get(ak)
 			if isinstance(arr, list):
 				for it in arr:

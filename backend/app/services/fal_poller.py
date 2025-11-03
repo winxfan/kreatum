@@ -79,8 +79,22 @@ def run_poller(interval_seconds: int = 20) -> None:
                                 logger.info("fal.poll: job moved to processing job_id=%s", job.id)
                             continue
                         if st_status == "COMPLETED":
-                            resp = get_request_response(request_id, model_id=model_id)
-                            media_url = _pick_media_url(st, resp)
+                            resp = None
+                            # Сначала пробуем готовый response_url от очереди (надёжнее для разных подпутей моделей)
+                            resp_url = st.get("response_url")
+                            if isinstance(resp_url, str) and resp_url.startswith("https://queue.fal.run/"):
+                                try:
+                                    resp = fetch_queue_json(resp_url)
+                                except Exception:
+                                    logger.exception("fal.poll: failed fetch response_url, will fallback to model_id")
+                            # Фоллбек на построение URL по model_id
+                            if resp is None:
+                                try:
+                                    resp = get_request_response(request_id, model_id=model_id)
+                                except Exception:
+                                    logger.exception("fal.poll: get_request_response failed, will try extract via response_url only")
+                                    resp = {}
+                            media_url = _pick_media_url(st, resp or {})
                             if not media_url:
                                 # Нет URL — считаем ошибкой
                                 job.status = "failed"
@@ -98,15 +112,32 @@ def run_poller(interval_seconds: int = 20) -> None:
                                 continue
 
                             # Скачиваем и кладем в S3
-                            video_bytes = fetch_bytes(media_url, timeout=180)
+                            media_bytes = fetch_bytes(media_url, timeout=180)
                             logger.info(
                                 "fal.poll: fetched media bytes job_id=%s bytes=%s url=%s",
                                 job.id,
-                                len(video_bytes) if isinstance(video_bytes, (bytes, bytearray)) else None,
+                                len(media_bytes) if isinstance(media_bytes, (bytes, bytearray)) else None,
                                 media_url,
                             )
-                            key = s3_key_for_video(job.anon_user_id or "user", job.order_id or str(job.id), 0, ".mp4")
-                            upload_bytes(settings.s3_bucket_name or "", key, video_bytes, content_type="video/mp4")
+
+                            # Поддержка изображений для serviceType=restore
+                            if (job.service_type or "") == "restore":
+                                lower_url = (media_url or "").lower()
+                                if lower_url.endswith((".jpg", ".jpeg")):
+                                    ext = ".jpg"
+                                    content_type = "image/jpeg"
+                                elif lower_url.endswith(".png"):
+                                    ext = ".png"
+                                    content_type = "image/png"
+                                else:
+                                    # дефолт — png
+                                    ext = ".png"
+                                    content_type = "image/png"
+                                key = s3_key_for_video(job.anon_user_id or "user", job.order_id or str(job.id), 0, ext)
+                                upload_bytes(settings.s3_bucket_name or "", key, media_bytes, content_type=content_type)
+                            else:
+                                key = s3_key_for_video(job.anon_user_id or "user", job.order_id or str(job.id), 0, ".mp4")
+                                upload_bytes(settings.s3_bucket_name or "", key, media_bytes, content_type="video/mp4")
                             logger.info(
                                 "fal.poll: uploaded to s3 bucket=%s key=%s",
                                 settings.s3_bucket_name,
