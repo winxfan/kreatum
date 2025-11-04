@@ -50,7 +50,8 @@ def get_stats(userId: str, db: Session = Depends(get_db)) -> dict:
 @router.get("/history")
 def get_history(userId: str, db: Session = Depends(get_db)) -> list[dict]:
     items = (
-        db.query(Referral)
+        db.query(Referral, User.username.label("invitee_username"))
+        .outerjoin(User, User.id == Referral.invitee_id)
         .filter(Referral.inviter_id == userId)
         .order_by(Referral.created_at.desc())
         .all()
@@ -60,11 +61,12 @@ def get_history(userId: str, db: Session = Depends(get_db)) -> list[dict]:
             "id": str(r.id),
             "inviterId": str(r.inviter_id),
             "inviteeId": str(r.invitee_id),
+            "inviteeUsername": invitee_username,
             "inviteePaid": r.invitee_paid,
             "rewardGiven": r.reward_given,
             "createdAt": r.created_at.isoformat() if r.created_at else None,
         }
-        for r in items
+        for (r, invitee_username) in items
     ]
 
 
@@ -105,7 +107,7 @@ def apply_referral_code(payload: dict, idempotency_key: str | None = Header(defa
 
     # Начислим бонус пригласившему, если ещё не начисляли
     bonus_granted = False
-    bonus_tokens = Decimal(50)
+    bonus_tokens = Decimal(15)
     if existing.inviter_id == inviter.id and not existing.reward_given:
         inviter.balance_tokens = (inviter.balance_tokens or 0) + bonus_tokens
         txn = Transaction(
