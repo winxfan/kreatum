@@ -30,6 +30,11 @@ TransactionStatusEnum = SAEnum(
     name='transaction_status', native_enum=True
 )
 
+TrafficTypeEnum = SAEnum(
+    'landing', 'app', 'bot',
+    name='traffic_type', native_enum=True
+)
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
@@ -159,6 +164,7 @@ class Job(Base):
     order_id = Column(Text, unique=True)
     email = Column(Text)
     generation_source = Column(Text, default="bot")  # bot | site | api
+    traffic_type = Column(TrafficTypeEnum)
 
     # Основная логика
     service_type = Column(Text)       # animate | restore | text_to_image | etc.
