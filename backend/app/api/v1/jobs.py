@@ -1,24 +1,47 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_UP
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import logging
 
 from app.database import get_db
 from app.services.fal import submit_generation
-from app.db.models import Job, User
+from app.db.models import Job, User, Model
 from app.services.telegram_service import notify_job_event
+ 
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"]) 
 
 logger = logging.getLogger(__name__)
 
 
-def _estimate_tokens(service_type: str) -> int:
-    if service_type == "animate":
-        return 89
-    if service_type == "restore":
-        return 10
-    return 100
+def _estimate_tokens_by_model(model: Model) -> int:
+    """Токены = рубли. Берём cost_per_unit_tokens (RUB) и округляем вверх."""
+    try:
+        price_rub = Decimal(model.cost_per_unit_tokens or 0)
+    except Exception:
+        price_rub = Decimal(0)
+    tokens = int(price_rub.quantize(Decimal("1"), rounding=ROUND_UP)) if price_rub > 0 else 0
+    return max(tokens, 1)
+
+def _extract_prompt_from_input(input_objects: list | None) -> str | None:
+    if not isinstance(input_objects, list):
+        return None
+    for it in input_objects:
+        if not isinstance(it, dict):
+            continue
+        name = it.get("name")
+        typ = it.get("type")
+        if name == "prompt" and (typ in ("text", None)):
+            val = it.get("value")
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    # Фоллбек: любой text-элемент с value
+    for it in input_objects:
+        if not isinstance(it, dict):
+            continue
+        if (it.get("type") == "text") and isinstance(it.get("value"), str) and it.get("value").strip():
+            return it.get("value").strip()
+    return None
 
 
 def _serialize_job(job: Job) -> dict:
@@ -27,7 +50,7 @@ def _serialize_job(job: Job) -> dict:
         "userId": str(job.user_id) if job.user_id else None,
         "modelId": str(job.model_id) if job.model_id else None,
         "orderId": job.order_id,
-        "serviceType": job.service_type,
+        "trafficType": str(job.traffic_type) if job.traffic_type is not None else None,
         "status": str(job.status) if job.status is not None else None,
         "priceRub": float(job.price_rub or 0),
         "tokensReserved": float(job.tokens_reserved or 0),
@@ -44,32 +67,43 @@ def _serialize_job(job: Job) -> dict:
 @router.post("")
 def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     user_id = payload.get("userId")
-    service_type = payload.get("serviceType")
+    model_id = payload.get("modelId")
+    traffic_type = payload.get("trafficType")
     input_objects = payload.get("input")
     description = payload.get("description")
+    # prompt теперь извлекаем из input (name=prompt, type=text, value)
+    prompt = _extract_prompt_from_input(input_objects) or payload.get("prompt") or description
     logger.info(
-        "create_job: received payload user_id=%s service_type=%s input_count=%s",
+        "create_job: received payload user_id=%s model_id=%s input_count=%s",
         user_id,
-        service_type,
+        model_id,
         len(input_objects) if isinstance(input_objects, list) else None,
     )
-    if not user_id or not service_type or not isinstance(input_objects, list):
+    if not user_id or not model_id or not isinstance(input_objects, list):
         logger.warning(
-            "create_job: invalid payload user_id=%s service_type=%s has_input_list=%s",
+            "create_job: invalid payload user_id=%s model_id=%s has_input_list=%s",
             user_id,
-            service_type,
+            model_id,
             isinstance(input_objects, list),
         )
-        raise HTTPException(status_code=400, detail="userId, serviceType, input are required")
+        raise HTTPException(status_code=400, detail="userId, modelId, input are required")
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         logger.warning("create_job: user not found user_id=%s", user_id)
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Предварительная валидация входа: требуется image_url для animate и restore
+    # Получаем модель и её форматы
+    model: Model | None = db.query(Model).filter(Model.id == model_id).first()
+    if not model:
+        logger.warning("create_job: model not found model_id=%s", model_id)
+        raise HTTPException(status_code=404, detail="Model not found")
+    fmt_from = (model.format_from or "").strip().lower()
+    fmt_to = (model.format_to or "").strip().lower()
+
+    # Предварительная валидация входа по форматам
     image_url: str | None = None
-    if service_type in ("animate", "restore"):
+    if fmt_from == "image":
         for it in input_objects or []:
             if isinstance(it, dict) and it.get("type") in ("image", None):
                 url_val = it.get("url")
@@ -78,18 +112,25 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                     break
         if not image_url:
             logger.warning(
-                "create_job: missing image url for %s user_id=%s", service_type, user_id
+                "create_job: missing image url for format_from=image user_id=%s", user_id
             )
-            raise HTTPException(status_code=400, detail=f"image url is required in input[0].url for {service_type}")
+            raise HTTPException(status_code=400, detail="image url is required in input[0].url for format_from=image")
+    if fmt_from == "text":
+        if not isinstance(prompt, str) or not prompt.strip():
+            logger.warning("create_job: missing prompt for format_from=text user_id=%s", user_id)
+            raise HTTPException(status_code=400, detail="prompt is required in input[name=prompt].value for format_from=text")
 
-    tokens_needed = _estimate_tokens(service_type)
+    tokens_needed = _estimate_tokens_by_model(model)
     job = Job(
         user_id=user.id,
-        service_type=service_type,
+        model_id=model.id,
         input=input_objects,
-        meta={"description": description} if description else None,
+        meta={"description": description, "prompt": prompt} if (description or prompt) else None,
         tokens_reserved=0,
         tokens_consumed=0,
+        traffic_type=traffic_type,
+        cost_unit=model.cost_unit,
+        cost_per_unit_tokens=model.cost_per_unit_tokens,
     )
 
     if (user.balance_tokens or 0) >= tokens_needed:
@@ -117,11 +158,11 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     db.refresh(job)
 
     # Если задача оплачена — ставим генерацию в очередь FAL
-    if job.is_paid and service_type == "animate":
+    # image -> video
+    if job.is_paid and fmt_from == "image" and fmt_to == "video":
         try:
             # image_url уже провалидирован выше
-
-            prompt = description or "Animate this image"
+            local_prompt = prompt or "Animate this image"
             order_id = str(job.id)
             # Сохраним order_id в Job для связки с вебхуками
             job.order_id = order_id
@@ -129,16 +170,24 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
             db.refresh(job)
 
             logger.info(
-                "create_job: submitting to FAL job_id=%s order_id=%s",
+                "create_job: submitting to FAL (image->video) job_id=%s order_id=%s",
                 job.id,
                 order_id,
             )
+            # Эндпоинт из модели: options.fal_endpoint | options.endpoint | model.name | дефолт
+            options = model.options or {}
+            endpoint = None
+            if isinstance(options, dict):
+                endpoint = options.get("fal_endpoint") or options.get("endpoint")
+            if not endpoint:
+                endpoint = model.name
             fal_resp = submit_generation(
                 image_url=image_url,
-                prompt=prompt,
+                prompt=local_prompt,
                 order_id=order_id,
                 item_index=0,
                 anon_user_id=None,
+                endpoint=model.name,
             )
             meta = job.meta or {}
             meta.update({"fal": {"requestId": fal_resp.get("request_id"), "modelId": fal_resp.get("model_id")}})
@@ -173,7 +222,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 db.refresh(job)
             finally:
                 logger.exception(
-                    "create_job: FAL submission failed job_id=%s, tokens_refunded=%s",
+                    "create_job: FAL submission failed (image->video) job_id=%s, tokens_refunded=%s",
                     job.id,
                     tokens_to_return if 'tokens_to_return' in locals() else 0,
                 )
@@ -184,63 +233,42 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                     job_id=str(job.id),
                     user_id=str(job.user_id) if job.user_id else None,
                     status="failed",
-                    service_type=job.service_type,
+                    service_type=None,
                     message=str(e),
                 )
             except Exception:
                 logger.exception("notify telegram failed for job_id=%s", job.id)
             raise HTTPException(status_code=502, detail=f"FAL submission failed: {e}")
 
-    # Поддержка реставрации фото (serviceType=restore)
-    if job.is_paid and service_type == "restore":
+    # text -> image
+    if job.is_paid and fmt_from == "text" and fmt_to == "image":
         try:
-            # image_url уже провалидирован выше
-            prompt = description or "Restore this photo"
             order_id = str(job.id)
             job.order_id = order_id
             db.commit()
             db.refresh(job)
 
-            # Опции модели: берём из payload.options при наличии, иначе — дефолты из модели
-            options = payload.get("options") if isinstance(payload.get("options"), dict) else {}
-            # Переносим плоские поля с корня тела в options, если их там ещё нет
-            for key in ("enhance_resolution", "fix_colors", "remove_scratches", "aspect_ratio"):
-                if key in payload and key not in options:
-                    options[key] = payload.get(key)
-
-            def _to_bool(val, default: bool) -> bool:
-                if isinstance(val, bool):
-                    return val
-                if isinstance(val, str):
-                    v = val.strip().lower()
-                    if v in ("true", "1", "yes", "on"):
-                        return True
-                    if v in ("false", "0", "no", "off"):
-                        return False
-                return default
-
-            extra_args = {
-                "enhance_resolution": _to_bool(options.get("enhance_resolution"), True),
-                "fix_colors": _to_bool(options.get("fix_colors"), True),
-                "remove_scratches": _to_bool(options.get("remove_scratches"), True),
-            }
-
-            endpoint = "fal-ai/image-apps-v2/photo-restoration"
+            # Эндпоинт из модели: options.fal_endpoint | options.endpoint | model.name | дефолт
+            options = model.options or {}
+            endpoint = None
+            if isinstance(options, dict):
+                endpoint = options.get("fal_endpoint") or options.get("endpoint")
+            if not endpoint:
+                endpoint = model.name
 
             logger.info(
-                "create_job: submitting RESTORE to FAL job_id=%s order_id=%s endpoint=%s",
+                "create_job: submitting TEXT->IMAGE to FAL job_id=%s order_id=%s endpoint=%s",
                 job.id,
                 order_id,
                 endpoint,
             )
             fal_resp = submit_generation(
-                image_url=image_url,
-                prompt=prompt,
+                image_url=None,
+                prompt=prompt or "Generate image",
                 order_id=order_id,
                 item_index=0,
                 anon_user_id=None,
-                endpoint=endpoint,
-                extra_args=extra_args,
+                endpoint=model.name,
             )
             meta = job.meta or {}
             meta.update({"fal": {"requestId": fal_resp.get("request_id"), "modelId": fal_resp.get("model_id")}})
@@ -250,7 +278,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
             db.commit()
             db.refresh(job)
             logger.info(
-                "create_job: FAL submitted RESTORE job_id=%s request_id=%s model_id=%s",
+                "create_job: FAL submitted TEXT->IMAGE job_id=%s request_id=%s model_id=%s",
                 job.id,
                 (fal_resp or {}).get("request_id"),
                 (fal_resp or {}).get("model_id"),
@@ -272,7 +300,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 db.refresh(job)
             finally:
                 logger.exception(
-                    "create_job: FAL submission (restore) failed job_id=%s, tokens_refunded=%s",
+                    "create_job: FAL submission (text->image) failed job_id=%s, tokens_refunded=%s",
                     job.id,
                     tokens_to_return if 'tokens_to_return' in locals() else 0,
                 )
@@ -282,7 +310,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                     job_id=str(job.id),
                     user_id=str(job.user_id) if job.user_id else None,
                     status="failed",
-                    service_type=job.service_type,
+                    service_type=None,
                     message=str(e),
                 )
             except Exception:

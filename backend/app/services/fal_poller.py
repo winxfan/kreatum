@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.db.models import Job
+from app.db.models import Job, Model
 from app.services.fal import get_request_status, get_request_response, extract_media_url, fetch_queue_json, fetch_bytes
 from app.services.s3_utils import s3_key_for_video, upload_bytes, get_file_url_with_expiry
 from app.core.config import settings
@@ -51,7 +51,16 @@ def run_poller(interval_seconds: int = 20) -> None:
                 for job in jobs:
                     fal_meta = (job.meta or {}).get("fal") if isinstance(job.meta, dict) else None
                     request_id = (getattr(job, "request_id", None) or (fal_meta.get("requestId") if isinstance(fal_meta, dict) else None))
-                    model_id = fal_meta.get("modelId") if isinstance(fal_meta, dict) else None
+                    # endpoint/model_id для статуса всегда берём из Model.name
+                    model_id = None
+                    if job.model_id:
+                        try:
+                            m = db.query(Model).filter(Model.id == job.model_id).first()
+                            if m and isinstance(m.name, str) and m.name:
+                                parts = m.name.split("/")
+                                model_id = m.name
+                        except Exception:
+                            logger.exception("fal.poll: failed to derive model_id from model.name for job_id=%s", job.id)
                     if not request_id:
                         continue
 
@@ -106,7 +115,7 @@ def run_poller(interval_seconds: int = 20) -> None:
                                     job_id=str(job.id),
                                     user_id=str(job.user_id) if job.user_id else None,
                                     status="failed",
-                                    service_type=job.service_type,
+                                    service_type=None,
                                     message="media url not found",
                                 )
                                 continue
@@ -120,8 +129,15 @@ def run_poller(interval_seconds: int = 20) -> None:
                                 media_url,
                             )
 
-                            # Поддержка изображений для serviceType=restore
-                            if (job.service_type or "") == "restore":
+                            # Определяем тип результата по модели (format_to)
+                            fmt_to = None
+                            try:
+                                if job.model_id:
+                                    m = db.query(Model).filter(Model.id == job.model_id).first()
+                                    fmt_to = (m.format_to or "").strip().lower() if m and m.format_to else None
+                            except Exception:
+                                logger.exception("fal.poll: failed to load model for job_id=%s", job.id)
+                            if fmt_to == "image":
                                 lower_url = (media_url or "").lower()
                                 if lower_url.endswith((".jpg", ".jpeg")):
                                     ext = ".jpg"
@@ -130,7 +146,6 @@ def run_poller(interval_seconds: int = 20) -> None:
                                     ext = ".png"
                                     content_type = "image/png"
                                 else:
-                                    # дефолт — png
                                     ext = ".png"
                                     content_type = "image/png"
                                 key = s3_key_for_video(job.anon_user_id or "user", job.order_id or str(job.id), 0, ext)
@@ -159,7 +174,7 @@ def run_poller(interval_seconds: int = 20) -> None:
                                 job_id=str(job.id),
                                 user_id=str(job.user_id) if job.user_id else None,
                                 status="done",
-                                service_type=job.service_type,
+                                service_type=None,
                                 result_url=public_url,
                             )
                             continue
@@ -178,7 +193,7 @@ def run_poller(interval_seconds: int = 20) -> None:
                                 job_id=str(job.id),
                                 user_id=str(job.user_id) if job.user_id else None,
                                 status="failed",
-                                service_type=job.service_type,
+                                service_type=None,
                             )
                             continue
                     except Exception:

@@ -75,7 +75,7 @@ def generate_from_url(image_url: str, prompt: str, sync_mode: bool = True) -> Di
 
 
 def submit_generation(
-    image_url: str,
+    image_url: Optional[str],
     prompt: str,
     order_id: str,
     item_index: int,
@@ -90,7 +90,7 @@ def submit_generation(
 	# Вариант без вебхука: статус будет обновляться только поллером
 
 	# Убедимся, что image_url публичный (presigned), если пришёл как s3://
-	if image_url.startswith("s3://"):
+	if image_url and image_url.startswith("s3://"):
 		b, k = parse_s3_url(image_url)
 		image_url, _ = get_file_url_with_expiry(b, k)
 		if image_url.startswith("s3://"):
@@ -106,8 +106,10 @@ def submit_generation(
 	}
 	payload = {
 		"prompt": prompt,
-		"image_url": image_url,
 	}
+	# Добавляем image_url только если он действительно задан
+	if image_url:
+		payload["image_url"] = image_url
 	# Дополнительные аргументы модели (например, для реставрации фото)
 	if extra_args:
 		for k, v in extra_args.items():
@@ -116,9 +118,10 @@ def submit_generation(
 				continue
 			payload[k] = v
 	log_headers = {**headers, "Authorization": "Key ****"}
-	logger.info(
-		f"fal.http POST {queue_url} (no-webhook) headers={log_headers} json={_json.dumps({**payload, 'image_url': ('<https>' if str(payload.get('image_url','')).startswith('http') else payload.get('image_url'))})[:2000]}"
-	)
+	log_payload = dict(payload)
+	if "image_url" in log_payload:
+		log_payload["image_url"] = "<https>" if str(log_payload.get("image_url", "")).startswith("http") else log_payload.get("image_url")
+	logger.info(f"fal.http POST {queue_url} (no-webhook) headers={log_headers} json={_json.dumps(log_payload)[:2000]}")
 	resp = requests.post(queue_url, json=payload, headers=headers, timeout=30)
 	resp.raise_for_status()
 	data = resp.json()
@@ -126,18 +129,14 @@ def submit_generation(
 	request_id = data.get("request_id") or data.get("id") or data.get("requestId")
 	if not request_id:
 		raise ValueError("fal.ai queue: request_id not found in response")
-	# Сохраним base model id (namespace/model) для последующих запросов
-	parts = (use_endpoint or "").split("/")
-	base_model = "/".join(parts[:2]) if len(parts) >= 2 else use_endpoint
-	return {"request_id": request_id, "model_id": base_model}
+	# Сохраняем полный endpoint (вкл. подпуть), чтобы статус запрашивать по тому же пути
+	return {"request_id": request_id, "model_id": use_endpoint}
 
 
 def get_request_status(request_id: str, logs: bool = False, model_id: str | None = None) -> Dict[str, Any]:
-	"""Получить статус задачи очереди fal.ai."""
-	# Для статуса и ответа нельзя включать subpath — только базовый model_id (namespace/model)
-	parts = (model_id or settings.fal_endpoint or "").split("/")
-	base_model = "/".join(parts[:2]) if len(parts) >= 2 else (model_id or settings.fal_endpoint)
-	status_url = f"https://queue.fal.run/{base_model}/requests/{request_id}/status"
+	"""Получить статус задачи очереди fal.ai по ПОЛНОМУ пути модели (включая подпуть)."""
+	model_path = model_id or settings.fal_endpoint
+	status_url = f"https://queue.fal.run/{model_path}/requests/{request_id}/status"
 	params = {"logs": 1} if logs else None
 	headers = {"Authorization": f"Key {settings.fal_key}"}
 	logger.info(f"fal.http GET {status_url} headers={{'Authorization': 'Key ****'}} params={params}")
@@ -149,10 +148,9 @@ def get_request_status(request_id: str, logs: bool = False, model_id: str | None
 
 
 def get_request_response(request_id: str, model_id: str | None = None) -> Dict[str, Any]:
-	"""Получить результат задачи очереди fal.ai."""
-	parts = (model_id or settings.fal_endpoint or "").split("/")
-	base_model = "/".join(parts[:2]) if len(parts) >= 2 else (model_id or settings.fal_endpoint)
-	resp_url = f"https://queue.fal.run/{base_model}/requests/{request_id}"
+	"""Получить результат задачи очереди fal.ai по ПОЛНОМУ пути модели (включая подпуть)."""
+	model_path = model_id or settings.fal_endpoint
+	resp_url = f"https://queue.fal.run/{model_path}/requests/{request_id}"
 	headers = {"Authorization": f"Key {settings.fal_key}"}
 	logger.info(f"fal.http GET {resp_url} headers={{'Authorization': 'Key ****'}}")
 	resp = requests.get(resp_url, headers=headers, timeout=60)
