@@ -1,0 +1,136 @@
+[
+	{
+		"id": "be88d8a3-cc11-41cf-84eb-cc96ed1654e4",
+		"title": "Kling 2.5 Turbo Pro",
+		"name": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
+		"description": "Top-tier image-to-video generation with unparalleled motion fluidity, cinematic visuals, and exceptional prompt precision.",
+		"category_id": "8b7d5e09-18df-428a-b478-5f59473fa9ec",
+		"cost_unit": "second",
+		"cost_per_unit_tokens": "12.0000",
+		"currency": "RUB",
+		"banner_image_url": "https://example.com/assets/kling-banner.jpg",
+		"hint": "Загрузите 1–3 изображения и опишите сцену для генерации видео с реалистичным движением.",
+		"max_file_count": 1,
+		"options": {
+			"options": [
+				{
+					"name": "prompt",
+					"type": "text",
+					"title": "Описание сцены",
+					"is_required": true,
+					"default_value": "Четкая линия старта разделяет две мощные машины, двигатели которых взревели в предвкушении предстоящего испытания. Они устремляются вперед в пылу соревнования, сливаясь в одно целое со скоростью и хромом."
+				},
+				{
+					"name": "image_url",
+					"type": "upload_zone",
+					"title": "Изображения",
+					"is_required": true,
+					"default_value": [
+						"https://v3.fal.media/files/panda/HnY2yf-BbzlrVQxR-qP6m_9912d0932988453aadf3912fc1901f52.jpg"
+					]
+				},
+				{
+					"name": "duration",
+					"type": "select",
+					"title": "Длительность",
+					"options": [
+						5,
+						10
+					],
+					"default_value": 5
+				},
+				{
+					"name": "negative_prompt",
+					"type": "text",
+					"title": "Negative Prompt",
+					"default_value": ""
+				}
+			],
+			"demo_output": [
+				{
+					"url": "https://storage.googleapis.com/falserverless/model_tests/kling/kling-v2.5-turbo-pro-image-to-video-output.mp4",
+					"meta": {
+						"preview": "https://example.com/previews/veo3.jpg"
+					},
+					"name": "result",
+					"type": "video",
+					"title": "Пример результата"
+				}
+			]
+		},
+		"created_at": "2025-10-29 22:46:18.599614+03",
+		"format_from": "image",
+		"format_to": "video"
+	},
+	{
+		"id": "c82f7b9a-1e3f-4a5d-b3c2-8e9f6d1a4b7c",
+		"title": "Photo Restoration",
+		"name": "fal-ai/image-apps-v2/photo-restoration",
+		"description": "AI-powered photo restoration that enhances old or damaged photos by improving resolution, fixing colors, and removing scratches.",
+		"category_id": "8b7d5e09-18df-428a-b478-5f59473fa9ec",
+		"cost_unit": "image",
+		"cost_per_unit_tokens": "10",
+		"currency": "RUB",
+		"banner_image_url": "https://example.com/assets/photo-restoration-banner.jpg",
+		"hint": "Загрузите старое или поврежденное фото для восстановления. Модель улучшит разрешение, исправит цвета и уберет царапины.",
+		"max_file_count": 1,
+		"options": {
+			"options": [
+				{
+					"name": "image_url",
+					"type": "upload_zone",
+					"title": "Фотография для восстановления",
+					"is_required": true,
+					"default_value": [
+						"https://v3.fal.media/files/panda/BcOIyOJ5Z1-GOjDi_GmsX_50e353c588c74435882f8f68989b4af5.png"
+					]
+				},
+				{
+					"name": "enhance_resolution",
+					"type": "checkbox",
+					"title": "Улучшить разрешение",
+					"default_value": true
+				},
+				{
+					"name": "fix_colors",
+					"type": "checkbox",
+					"title": "Исправить цвета",
+					"default_value": true
+				},
+				{
+					"name": "remove_scratches",
+					"type": "checkbox",
+					"title": "Убрать царапины",
+					"default_value": true
+				},
+				{
+					"name": "aspect_ratio",
+					"type": "select",
+					"title": "Соотношение сторон",
+					"options": [
+						"1:1",
+						"16:9",
+						"9:16",
+						"4:3",
+						"3:4"
+					],
+					"default_value": "4:3"
+				}
+			],
+			"demo_output": [
+				{
+					"url": "https://v3b.fal.media/files/b/zebra/grrkysWir2bvFTnubydQK_92e56e5831994be59e653611983d503f.png",
+					"meta": {
+						"preview": "https://example.com/previews/photo-restoration.jpg"
+					},
+					"name": "result",
+					"type": "image",
+					"title": "Пример восстановленного фото"
+				}
+			]
+		},
+		"created_at": "2025-11-01 19:38:12.308153+03",
+		"format_from": "image",
+		"format_to": "image"
+	}
+]

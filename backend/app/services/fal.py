@@ -97,67 +97,103 @@ def submit_generation(
 			# если по какой-то причине не преобразовалось — явно падаем
 			raise ValueError("submit_generation: failed to presign s3 image url")
 
-	# HTTP Queue API (без использования fal_client.queue)
+	# Используем официальный fal-client для постановки в очередь
+	if fal_client is None:
+		raise RuntimeError("fal-client не установлен в контейнере. Установите 'fal-client'.")
 	use_endpoint = endpoint or settings.fal_endpoint
-	queue_url = f"https://queue.fal.run/{use_endpoint}"
-	headers = {
-		"Authorization": f"Key {settings.fal_key}",
-		"Content-Type": "application/json",
-	}
-	payload = {
-		"prompt": prompt,
-	}
+	arguments: Dict[str, Any] = {}
+	# Передаём prompt только если он задан
+	if isinstance(prompt, str) and prompt != "":
+		arguments["prompt"] = prompt
 	# Добавляем image_url только если он действительно задан
 	if image_url:
-		payload["image_url"] = image_url
+		arguments["image_url"] = image_url
 	# Дополнительные аргументы модели (например, для реставрации фото)
 	if extra_args:
 		for k, v in extra_args.items():
-			# не перетираем обязательные поля, если случайно переданы сверху
 			if k in ("prompt", "image_url"):
 				continue
-			payload[k] = v
-	log_headers = {**headers, "Authorization": "Key ****"}
-	log_payload = dict(payload)
-	if "image_url" in log_payload:
-		log_payload["image_url"] = "<https>" if str(log_payload.get("image_url", "")).startswith("http") else log_payload.get("image_url")
-	logger.info(f"fal.http POST {queue_url} (no-webhook) headers={log_headers} json={_json.dumps(log_payload)[:2000]}")
-	resp = requests.post(queue_url, json=payload, headers=headers, timeout=30)
-	resp.raise_for_status()
-	data = resp.json()
-	logger.info(f"fal.http <- {resp.status_code} body={_json.dumps(data)[:2000]}")
-	request_id = data.get("request_id") or data.get("id") or data.get("requestId")
+			arguments[k] = v
+	mask_arguments = dict(arguments)
+	if "image_url" in mask_arguments:
+		mask_arguments["image_url"] = "<https>"
+	logger.info(
+		f"fal.sdk submit model={use_endpoint} args={_json.dumps(mask_arguments)[:2000]}"
+	)
+	handler = fal_client.submit(use_endpoint, arguments=arguments)
+	request_id = getattr(handler, "request_id", None)
 	if not request_id:
-		raise ValueError("fal.ai queue: request_id not found in response")
-	# Сохраняем полный endpoint (вкл. подпуть), чтобы статус запрашивать по тому же пути
+		raise ValueError("fal-client: request_id not returned by submit")
 	return {"request_id": request_id, "model_id": use_endpoint}
 
 
 def get_request_status(request_id: str, logs: bool = False, model_id: str | None = None) -> Dict[str, Any]:
-	"""Получить статус задачи очереди fal.ai по ПОЛНОМУ пути модели (включая подпуть)."""
+	"""Получить статус задачи через fal-client по ПОЛНОМУ пути модели."""
+	if fal_client is None:
+		raise RuntimeError("fal-client не установлен в контейнере. Установите 'fal-client'.")
 	model_path = model_id or settings.fal_endpoint
-	status_url = f"https://queue.fal.run/{model_path}/requests/{request_id}/status"
-	params = {"logs": 1} if logs else None
-	headers = {"Authorization": f"Key {settings.fal_key}"}
-	logger.info(f"fal.http GET {status_url} headers={{'Authorization': 'Key ****'}} params={params}")
-	resp = requests.get(status_url, headers=headers, params=params, timeout=30)
-	resp.raise_for_status()
-	data = resp.json()
-	logger.info(f"fal.http <- {resp.status_code} body={_json.dumps(data)[:2000]}")
-	return data
+	logger.info(
+		f"fal.sdk status model={model_path} request_id={request_id} with_logs={logs}"
+	)
+	data = fal_client.status(model_path, request_id, with_logs=logs)
+	# Безопасное логирование (fal-client может возвращать несериализуемые объекты, напр. InProgress)
+	try:
+		log_str = _json.dumps(data)[:2000]  # type: ignore[arg-type]
+	except TypeError:
+		log_str = str(data)
+	logger.info(f"fal.sdk status -> {log_str}")
+	# Нормализуем в dict, чтобы вызывающий код не падал на .get
+	if isinstance(data, dict):
+		return data
+	# Объект fal_client.* — попытаемся извлечь статус
+	try:
+		status_val = getattr(data, "status", None)
+		if isinstance(status_val, str) and status_val:
+			status_norm = status_val.upper()
+		else:
+			cls_name = data.__class__.__name__.upper()
+			if "COMPLETED" in cls_name:
+				status_norm = "COMPLETED"
+			elif "INPROGRESS" in cls_name or "IN_PROGRESS" in cls_name:
+				status_norm = "IN_PROGRESS"
+			elif "FAILED" in cls_name or "ERROR" in cls_name:
+				status_norm = "FAILED"
+			elif "CANCELLED" in cls_name or "CANCELED" in cls_name:
+				status_norm = "CANCELLED"
+			else:
+				status_norm = "IN_PROGRESS"
+	except Exception:
+		status_norm = "IN_PROGRESS"
+	# Соберём полезные поля если есть
+	resp = {"status": status_norm}
+	for fld in ("logs", "metrics", "response_url"):
+		try:
+			val = getattr(data, fld, None)
+			if val is not None:
+				resp[fld] = val
+		except Exception:
+			continue
+	return resp
 
 
 def get_request_response(request_id: str, model_id: str | None = None) -> Dict[str, Any]:
-	"""Получить результат задачи очереди fal.ai по ПОЛНОМУ пути модели (включая подпуть)."""
+	"""Получить результат задачи через fal-client по ПОЛНОМУ пути модели."""
+	if fal_client is None:
+		raise RuntimeError("fal-client не установлен в контейнере. Установите 'fal-client'.")
 	model_path = model_id or settings.fal_endpoint
-	resp_url = f"https://queue.fal.run/{model_path}/requests/{request_id}"
-	headers = {"Authorization": f"Key {settings.fal_key}"}
-	logger.info(f"fal.http GET {resp_url} headers={{'Authorization': 'Key ****'}}")
-	resp = requests.get(resp_url, headers=headers, timeout=60)
-	resp.raise_for_status()
-	data = resp.json()
-	logger.info(f"fal.http <- {resp.status_code} body={_json.dumps(data)[:2000]}")
-	return data
+	logger.info(
+		f"fal.sdk result model={model_path} request_id={request_id}"
+	)
+	data = fal_client.result(model_path, request_id)
+	try:
+		log_str = _json.dumps(data)[:2000]
+	except TypeError:
+		log_str = str(data)
+	logger.info(f"fal.sdk result -> {log_str}")
+	# На практике result возвращает dict; если иное — приведём к строковому виду
+	if isinstance(data, dict):
+		return data
+	return {"response": str(data)}
 
 
 def extract_media_url(payload: Dict[str, Any]) -> Optional[str]:

@@ -44,6 +44,27 @@ def _extract_prompt_from_input(input_objects: list | None) -> str | None:
     return None
 
 
+def _extract_extra_args(input_objects: list | None) -> dict:
+    args: dict = {}
+    if not isinstance(input_objects, list):
+        return args
+    for it in input_objects:
+        if not isinstance(it, dict):
+            continue
+        name = it.get("name")
+        typ = it.get("type")
+        if not isinstance(name, str) or name in ("prompt", "image_url"):
+            continue
+        if typ == "upload_zone":
+            # загрузки файлов собираем отдельно как image_url
+            continue
+        if "value" in it:
+            val = it.get("value")
+            if isinstance(val, (str, int, float, bool)) and val != "":
+                args[name] = val
+    return args
+
+
 def _serialize_job(job: Job) -> dict:
     return {
         "id": str(job.id),
@@ -188,6 +209,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 item_index=0,
                 anon_user_id=None,
                 endpoint=model.name,
+                extra_args=_extract_extra_args(input_objects),
             )
             meta = job.meta or {}
             meta.update({"fal": {"requestId": fal_resp.get("request_id"), "modelId": fal_resp.get("model_id")}})
@@ -269,6 +291,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 item_index=0,
                 anon_user_id=None,
                 endpoint=model.name,
+                extra_args=_extract_extra_args(input_objects),
             )
             meta = job.meta or {}
             meta.update({"fal": {"requestId": fal_resp.get("request_id"), "modelId": fal_resp.get("model_id")}})
@@ -301,6 +324,83 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
             finally:
                 logger.exception(
                     "create_job: FAL submission (text->image) failed job_id=%s, tokens_refunded=%s",
+                    job.id,
+                    tokens_to_return if 'tokens_to_return' in locals() else 0,
+                )
+            try:
+                notify_job_event(
+                    event="job.failed",
+                    job_id=str(job.id),
+                    user_id=str(job.user_id) if job.user_id else None,
+                    status="failed",
+                    service_type=None,
+                    message=str(e),
+                )
+            except Exception:
+                logger.exception("notify telegram failed for job_id=%s", job.id)
+            raise HTTPException(status_code=502, detail=f"FAL submission failed: {e}")
+
+    # image -> image (например, Photo Restoration)
+    if job.is_paid and fmt_from == "image" and fmt_to == "image":
+        try:
+            order_id = str(job.id)
+            job.order_id = order_id
+            db.commit()
+            db.refresh(job)
+
+            options = model.options or {}
+            endpoint = None
+            if isinstance(options, dict):
+                endpoint = options.get("fal_endpoint") or options.get("endpoint")
+            if not endpoint:
+                endpoint = model.name
+
+            logger.info(
+                "create_job: submitting IMAGE->IMAGE to FAL job_id=%s order_id=%s endpoint=%s",
+                job.id,
+                order_id,
+                endpoint,
+            )
+            fal_resp = submit_generation(
+                image_url=image_url,
+                prompt=prompt or "",
+                order_id=order_id,
+                item_index=0,
+                anon_user_id=None,
+                endpoint=model.name,
+                extra_args=_extract_extra_args(input_objects),
+            )
+            meta = job.meta or {}
+            meta.update({"fal": {"requestId": fal_resp.get("request_id"), "modelId": fal_resp.get("model_id")}})
+            job.meta = meta
+            if fal_resp.get("request_id"):
+                job.request_id = str(fal_resp.get("request_id"))
+            db.commit()
+            db.refresh(job)
+            logger.info(
+                "create_job: FAL submitted IMAGE->IMAGE job_id=%s request_id=%s model_id=%s",
+                job.id,
+                (fal_resp or {}).get("request_id"),
+                (fal_resp or {}).get("model_id"),
+            )
+        except Exception as e:
+            try:
+                tokens_to_return = int(job.tokens_reserved or 0)
+                if tokens_to_return and job.user_id:
+                    user_refund = db.query(User).filter(User.id == job.user_id).first()
+                    if user_refund:
+                        user_refund.balance_tokens = (user_refund.balance_tokens or 0) + tokens_to_return
+                job.tokens_reserved = 0
+                job.is_paid = False
+                job.status = "failed"
+                meta = job.meta or {}
+                meta.update({"falError": str(e)})
+                job.meta = meta
+                db.commit()
+                db.refresh(job)
+            finally:
+                logger.exception(
+                    "create_job: FAL submission (image->image) failed job_id=%s, tokens_refunded=%s",
                     job.id,
                     tokens_to_return if 'tokens_to_return' in locals() else 0,
                 )

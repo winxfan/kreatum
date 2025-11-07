@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.db.models import Job, Model
-from app.services.fal import get_request_status, get_request_response, extract_media_url, fetch_queue_json, fetch_bytes
+from app.services.fal import get_request_status, get_request_response, extract_media_url, fetch_bytes
 from app.services.s3_utils import s3_key_for_video, upload_bytes, get_file_url_with_expiry
 from app.core.config import settings
 from app.services.telegram_service import notify_job_event
@@ -19,16 +19,10 @@ logger = logging.getLogger("uvicorn.error")
 
 
 def _pick_media_url(request_status: dict, request_response: dict) -> Optional[str]:
+    # При использовании fal-client достаточно разобрать response
     u = extract_media_url(request_response)
     if u:
         return u
-    resp_url = request_status.get("response_url")
-    if isinstance(resp_url, str) and resp_url.startswith("https://queue.fal.run/"):
-        try:
-            qjson = fetch_queue_json(resp_url)
-            return extract_media_url(qjson or {})
-        except Exception:
-            logger.exception("fal.poll: failed fetch_queue_json")
     return None
 
 
@@ -88,21 +82,11 @@ def run_poller(interval_seconds: int = 20) -> None:
                                 logger.info("fal.poll: job moved to processing job_id=%s", job.id)
                             continue
                         if st_status == "COMPLETED":
-                            resp = None
-                            # Сначала пробуем готовый response_url от очереди (надёжнее для разных подпутей моделей)
-                            resp_url = st.get("response_url")
-                            if isinstance(resp_url, str) and resp_url.startswith("https://queue.fal.run/"):
-                                try:
-                                    resp = fetch_queue_json(resp_url)
-                                except Exception:
-                                    logger.exception("fal.poll: failed fetch response_url, will fallback to model_id")
-                            # Фоллбек на построение URL по model_id
-                            if resp is None:
-                                try:
-                                    resp = get_request_response(request_id, model_id=model_id)
-                                except Exception:
-                                    logger.exception("fal.poll: get_request_response failed, will try extract via response_url only")
-                                    resp = {}
+                            try:
+                                resp = get_request_response(request_id, model_id=model_id)
+                            except Exception:
+                                logger.exception("fal.poll: get_request_response failed")
+                                resp = {}
                             media_url = _pick_media_url(st, resp or {})
                             if not media_url:
                                 # Нет URL — считаем ошибкой
