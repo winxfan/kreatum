@@ -3,6 +3,7 @@ import os
 import requests
 import logging
 import json as _json
+import time
 
 # fal_client может отсутствовать в окружении контейнера; делаем импорт опциональным
 try:
@@ -89,18 +90,40 @@ def submit_generation(
 	"""
 	# Вариант без вебхука: статус будет обновляться только поллером
 
+	# Входные параметры (безопасное логирование)
+	try:
+		img_kind = "s3" if image_url and image_url.startswith("s3://") else ("http" if image_url else "none")
+		logger.info(
+			f"submit_generation: called image_url={img_kind} prompt_len={len(prompt) if isinstance(prompt, str) else 0} "
+			f"order_id={order_id} item_index={item_index} anon_user_id={'set' if anon_user_id else 'none'} "
+			f"endpoint_override={(endpoint or 'none')} extra_args_keys={list((extra_args or {}).keys())[:20]}"
+		)
+	except Exception:
+		logger.exception("submit_generation: failed to log call arguments")
+
+	start_ts = time.perf_counter()
+
 	# Убедимся, что image_url публичный (presigned), если пришёл как s3://
-	if image_url and image_url.startswith("s3://"):
-		b, k = parse_s3_url(image_url)
-		image_url, _ = get_file_url_with_expiry(b, k)
-		if image_url.startswith("s3://"):
-			# если по какой-то причине не преобразовалось — явно падаем
-			raise ValueError("submit_generation: failed to presign s3 image url")
+	try:
+		if image_url and image_url.startswith("s3://"):
+			logger.info("submit_generation: presign S3 image url start")
+			b, k = parse_s3_url(image_url)
+			logger.info(f"submit_generation: parsed s3 bucket={b} key={k}")
+			image_url, _ = get_file_url_with_expiry(b, k)
+			logger.info(f"submit_generation: presign result scheme={'s3' if image_url.startswith('s3://') else 'http(s)'}")
+			if image_url.startswith("s3://"):
+				# если по какой-то причине не преобразовалось — явно падаем
+				raise ValueError("submit_generation: failed to presign s3 image url")
+	except Exception:
+		logger.exception("submit_generation: error while presigning image_url")
+		raise
 
 	# Используем официальный fal-client для постановки в очередь
 	if fal_client is None:
+		logger.error("submit_generation: fal_client is None; cannot submit")
 		raise RuntimeError("fal-client не установлен в контейнере. Установите 'fal-client'.")
 	use_endpoint = endpoint or settings.fal_endpoint
+	logger.info(f"submit_generation: using endpoint {use_endpoint}")
 	arguments: Dict[str, Any] = {}
 	# Передаём prompt только если он задан
 	if isinstance(prompt, str) and prompt != "":
@@ -117,13 +140,44 @@ def submit_generation(
 	mask_arguments = dict(arguments)
 	if "image_url" in mask_arguments:
 		mask_arguments["image_url"] = "<https>"
+	if "prompt" in mask_arguments:
+		try:
+			mask_arguments["prompt"] = f"<len={len(str(mask_arguments['prompt']))}>"
+		except Exception:
+			mask_arguments["prompt"] = "<len=? >"
 	logger.info(
 		f"fal.sdk submit model={use_endpoint} args={_json.dumps(mask_arguments)[:2000]}"
 	)
-	handler = fal_client.submit(use_endpoint, arguments=arguments)
+	try:
+		submit_ts = time.perf_counter()
+		handler = fal_client.submit(use_endpoint, arguments=arguments)
+		elapsed_ms = int((time.perf_counter() - submit_ts) * 1000)
+		# Снимем безопасные поля из handler (если есть)
+		safe_info: Dict[str, Any] = {}
+		for attr in ("request_id", "status", "response_url", "queue_position"):
+			try:
+				val = getattr(handler, attr, None)
+				if val is not None:
+					safe_info[attr] = val
+			except Exception:
+				continue
+		handler_type = getattr(handler, "__class__", type(handler)).__name__
+		logger.info(f"fal.sdk submit -> elapsed_ms={elapsed_ms} handler_type={handler_type} info={safe_info}")
+	except Exception:
+		logger.exception("submit_generation: fal_client.submit raised")
+		raise
 	request_id = getattr(handler, "request_id", None)
 	if not request_id:
+		try:
+			handler_type = getattr(handler, "__class__", type(handler)).__name__
+			handler_repr = str(handler)
+		except Exception:
+			handler_type = handler_type if 'handler_type' in locals() else "<unknown>"
+			handler_repr = "<unrepr>"
+		logger.error(f"fal-client: request_id not returned by submit; handler_type={handler_type} handler_repr={handler_repr[:1000]}")
 		raise ValueError("fal-client: request_id not returned by submit")
+	total_ms = int((time.perf_counter() - start_ts) * 1000)
+	logger.info(f"submit_generation: return request_id={request_id} model_id={use_endpoint} total_ms={total_ms}")
 	return {"request_id": request_id, "model_id": use_endpoint}
 
 

@@ -208,7 +208,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 order_id=order_id,
                 item_index=0,
                 anon_user_id=None,
-                endpoint=model.name,
+                endpoint=endpoint,
                 extra_args=_extract_extra_args(input_objects),
             )
             meta = job.meta or {}
@@ -290,7 +290,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 order_id=order_id,
                 item_index=0,
                 anon_user_id=None,
-                endpoint=model.name,
+                endpoint=endpoint,
                 extra_args=_extract_extra_args(input_objects),
             )
             meta = job.meta or {}
@@ -367,7 +367,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 order_id=order_id,
                 item_index=0,
                 anon_user_id=None,
-                endpoint=model.name,
+                endpoint=endpoint,
                 extra_args=_extract_extra_args(input_objects),
             )
             meta = job.meta or {}
@@ -401,6 +401,84 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
             finally:
                 logger.exception(
                     "create_job: FAL submission (image->image) failed job_id=%s, tokens_refunded=%s",
+                    job.id,
+                    tokens_to_return if 'tokens_to_return' in locals() else 0,
+                )
+            try:
+                notify_job_event(
+                    event="job.failed",
+                    job_id=str(job.id),
+                    user_id=str(job.user_id) if job.user_id else None,
+                    status="failed",
+                    service_type=None,
+                    message=str(e),
+                )
+            except Exception:
+                logger.exception("notify telegram failed for job_id=%s", job.id)
+            raise HTTPException(status_code=502, detail=f"FAL submission failed: {e}")
+
+    # text -> video
+    if job.is_paid and fmt_from == "text" and fmt_to == "video":
+        try:
+            order_id = str(job.id)
+            job.order_id = order_id
+            db.commit()
+            db.refresh(job)
+
+            # Эндпоинт из модели: options.fal_endpoint | options.endpoint | model.name | дефолт
+            options = model.options or {}
+            endpoint = None
+            if isinstance(options, dict):
+                endpoint = options.get("fal_endpoint") or options.get("endpoint")
+            if not endpoint:
+                endpoint = model.name
+
+            logger.info(
+                "create_job: submitting TEXT->VIDEO to FAL job_id=%s order_id=%s endpoint=%s",
+                job.id,
+                order_id,
+                endpoint,
+            )
+            fal_resp = submit_generation(
+                image_url=None,
+                prompt=prompt or "Generate video",
+                order_id=order_id,
+                item_index=0,
+                anon_user_id=None,
+                endpoint=endpoint,
+                extra_args=_extract_extra_args(input_objects),
+            )
+            meta = job.meta or {}
+            meta.update({"fal": {"requestId": fal_resp.get("request_id"), "modelId": fal_resp.get("model_id")}})
+            job.meta = meta
+            if fal_resp.get("request_id"):
+                job.request_id = str(fal_resp.get("request_id"))
+            db.commit()
+            db.refresh(job)
+            logger.info(
+                "create_job: FAL submitted TEXT->VIDEO job_id=%s request_id=%s model_id=%s",
+                job.id,
+                (fal_resp or {}).get("request_id"),
+                (fal_resp or {}).get("model_id"),
+            )
+        except Exception as e:
+            try:
+                tokens_to_return = int(job.tokens_reserved or 0)
+                if tokens_to_return and job.user_id:
+                    user_refund = db.query(User).filter(User.id == job.user_id).first()
+                    if user_refund:
+                        user_refund.balance_tokens = (user_refund.balance_tokens or 0) + tokens_to_return
+                job.tokens_reserved = 0
+                job.is_paid = False
+                job.status = "failed"
+                meta = job.meta or {}
+                meta.update({"falError": str(e)})
+                job.meta = meta
+                db.commit()
+                db.refresh(job)
+            finally:
+                logger.exception(
+                    "create_job: FAL submission (text->video) failed job_id=%s, tokens_refunded=%s",
                     job.id,
                     tokens_to_return if 'tokens_to_return' in locals() else 0,
                 )
