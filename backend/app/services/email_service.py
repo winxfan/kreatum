@@ -3,7 +3,7 @@ import ssl
 import smtplib
 from typing import List, Tuple, Optional, Any
 
-from app.config import settings
+from app.core.config import settings
 
 
 def _smtp_conn():

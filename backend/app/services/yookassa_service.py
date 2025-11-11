@@ -3,7 +3,7 @@ import requests
 from typing import Any, Dict
 import uuid
 
-from app.config import settings
+from app.core.config import settings
 
 
 def _auth_header() -> str:

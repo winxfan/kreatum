@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.db.models import Transaction, User
 from app.services.yookassa_service import create_payment as create_yookassa_payment
-from app.config import settings
+from app.core.config import settings
 
 router = APIRouter(prefix="/payments", tags=["Payments"]) 
 

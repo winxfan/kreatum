@@ -7,7 +7,7 @@ from app.database import get_db
 from app.services.fal import submit_generation
 from app.db.models import Job, User, Model
 from app.services.telegram_service import notify_job_event
-from app.config import settings
+from app.core.config import settings
 from app.services.yookassa_service import create_payment as create_yookassa_payment
 from app.services.email_service import send_payment_request_email
  
