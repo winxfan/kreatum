@@ -7,6 +7,9 @@ from app.database import get_db
 from app.services.fal import submit_generation
 from app.db.models import Job, User, Model
 from app.services.telegram_service import notify_job_event
+from app.config import settings
+from app.services.yookassa_service import create_payment as create_yookassa_payment
+from app.services.email_service import send_payment_request_email
  
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"]) 
@@ -71,6 +74,56 @@ def _estimate_tokens_by_model(model: Model, input_objects: list | None) -> int:
     # Невидео или не поминутная тарификация — списываем за результат
     tokens = int(base_price.quantize(Decimal("1"), rounding=ROUND_UP)) if base_price > 0 else 0
     return max(tokens, 1)
+
+def _estimate_price_rub_by_model(model: Model, input_objects: list | None) -> Decimal:
+    """
+    Рассчитывает стоимость в RUB по модели.
+    - Если format_to='video' и cost_unit='second' — умножаем базовую стоимость на длительность.
+    - Иначе списываем базовую стоимость за результат.
+    Стоимость берём из model.cost_per_unit_tokens (храним RUB).
+    """
+    try:
+        base_price_rub = Decimal(model.cost_per_unit_tokens or 0)
+    except Exception:
+        base_price_rub = Decimal(0)
+
+    fmt_to = (model.format_to or "").strip().lower()
+    cost_unit = (model.cost_unit or "").strip().lower()
+
+    if fmt_to == "video" and cost_unit == "second":
+        duration_sec: int | None = None
+        if isinstance(input_objects, list):
+            for item in input_objects:
+                if isinstance(item, dict) and item.get("name") == "duration":
+                    val = item.get("value")
+                    try:
+                        cand = int(val) if val is not None else None
+                        if cand and cand > 0:
+                            duration_sec = cand
+                            break
+                    except Exception:
+                        continue
+        if duration_sec is None:
+            try:
+                options_obj = model.options or {}
+                options_list = options_obj.get("options") if isinstance(options_obj, dict) else None
+                if isinstance(options_list, list):
+                    for opt in options_list:
+                        if isinstance(opt, dict) and opt.get("name") == "duration":
+                            dv = opt.get("default_value")
+                            cand = int(dv) if dv is not None else None
+                            if cand and cand > 0:
+                                duration_sec = cand
+                                break
+            except Exception:
+                duration_sec = None
+        if duration_sec is None:
+            duration_sec = 5
+
+        price = (base_price_rub * Decimal(duration_sec)) if base_price_rub > 0 else Decimal(0)
+        return price.quantize(Decimal("0.01"), rounding=ROUND_UP)
+
+    return base_price_rub.quantize(Decimal("0.01"), rounding=ROUND_UP) if base_price_rub > 0 else Decimal("0.00")
 
 def _extract_prompt_from_input(input_objects: list | None) -> str | None:
     if not isinstance(input_objects, list):
@@ -139,6 +192,8 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     user_id = payload.get("userId")
     model_id = payload.get("modelId")
     traffic_type = payload.get("trafficType")
+    email = payload.get("email")
+    anon_user_id = payload.get("anonUserId")
     input_objects = payload.get("input")
     description = payload.get("description")
     # prompt теперь извлекаем из input (name=prompt, type=text, value)
@@ -194,6 +249,8 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     job = Job(
         user_id=user.id,
         model_id=model.id,
+        email=email,
+        anon_user_id=anon_user_id,
         input=input_objects,
         meta={"description": description, "prompt": prompt} if (description or prompt) else None,
         tokens_reserved=0,
@@ -226,6 +283,56 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     db.add(job)
     db.commit()
     db.refresh(job)
+
+    # Если не хватает токенов — создаём платёж в YooKassa, сохраняем ссылку и шлём письмо
+    payment_url: str | None = None
+    if not job.is_paid:
+        try:
+            # Привяжем order_id к job (используем UUID job)
+            job.order_id = str(job.id)
+            # Рассчитываем цену в RUB по модели
+            amount_rub_dec = _estimate_price_rub_by_model(model, input_objects)
+            amount_rub = float(amount_rub_dec)
+            job.price_rub = amount_rub_dec
+            db.commit()
+            db.refresh(job)
+
+            # return_url на страницу результата с job_id
+            base = settings.frontend_return_url_base or ""
+            return_url = f"{base}/result.html?job_id={job.order_id}" if base else ""
+            pay_desc = (description or model.title or "Оплата заказа").strip()
+            yk = create_yookassa_payment(
+                order_id=job.order_id,
+                amount_rub=amount_rub,
+                description=pay_desc,
+                return_url=return_url,
+                email=job.email,
+                anon_user_id=job.anon_user_id,
+            )
+            payment_url = yk.get("payment_url")
+
+            # Сохраним платёжную информацию
+            info = job.payment_info or {}
+            info.update({
+                "provider": "yookassa",
+                "paymentId": yk.get("payment_id"),
+                "paymentUrl": payment_url,
+                "amountRub": amount_rub,
+            })
+            job.payment_info = info
+            db.commit()
+            db.refresh(job)
+
+            # Письмо с просьбой оплатить
+            if job.email and payment_url:
+                try:
+                    send_payment_request_email(recipient_email=job.email, amount=amount_rub, payment_url=payment_url)
+                    logger.info("create_job: payment email sent to %s for job_id=%s", job.email, job.id)
+                except Exception:
+                    logger.exception("create_job: failed to send payment email for job_id=%s", job.id)
+        except Exception as e:
+            logger.exception("create_job: failed to create YooKassa payment for job_id=%s", job.id)
+            # Не валим запрос, просто вернём job без paymentUrl
 
     # Если задача оплачена — ставим генерацию в очередь FAL
     # image -> video
@@ -544,7 +651,10 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 logger.exception("notify telegram failed for job_id=%s", job.id)
             raise HTTPException(status_code=502, detail=f"FAL submission failed: {e}")
 
-    return _serialize_job(job)
+    resp = _serialize_job(job)
+    if payment_url:
+        resp["paymentUrl"] = payment_url
+    return resp
 
 
 @router.get("")

@@ -12,7 +12,7 @@ def _smtp_conn():
 	return smtplib.SMTP_SSL(host, port, context=ssl.create_default_context())
 
 
-def send_email_with_links(recipient_email: str, links: List[Any], request_id: Optional[str] = None) -> None:
+def send_email_with_links(recipient_email: str, links: List[Any], job_id: Optional[str] = None) -> None:
 	# Преобразуем входные элементы к публичным ссылкам
 	from app.utils.s3_utils import parse_s3_url, get_file_url_with_expiry
 
@@ -50,11 +50,11 @@ def send_email_with_links(recipient_email: str, links: List[Any], request_id: Op
 		if pu:
 			public_links.append(pu)
 
-	# Определяем ссылку для кнопки: приоритетно ссылка на фронтенд с request_id
+	# Определяем ссылку для кнопки: приоритетно ссылка на фронтенд с job_id
 	cta_url: Optional[str] = None
 	base = settings.frontend_return_url_base or ""
-	if base and request_id:
-		cta_url = f"{base}/result.html?request_id={request_id}"
+	if base and job_id:
+		cta_url = f"{base}/result.html?job_id={job_id}"
 	elif base:
 		cta_url = f"{base}/result.html"
 	elif public_links:

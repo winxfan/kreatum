@@ -13,7 +13,7 @@ def _auth_header() -> str:
 	return "Basic " + base64.b64encode(basic).decode()
 
 
-def create_payment(order_id: str, amount_rub: float, description: str, return_url: str, email: str | None = None, anon_user_id: str | None = None) -> Dict[str, Any]:
+def create_payment(order_id: str, amount_rub: float, description: str, return_url: str, email: str | None = None, anon_user_id: str | None = None, user_id: str | None = None) -> Dict[str, Any]:
 	"""Создать платеж и получить confirmation_url.
 	Документация YooKassa: POST /v3/payments
 	"""
@@ -22,7 +22,7 @@ def create_payment(order_id: str, amount_rub: float, description: str, return_ur
 		"amount": {"value": f"{amount_rub:.2f}", "currency": "RUB"},
 		"capture": True,
 		"description": description,
-		"metadata": {"order_id": order_id, "email": email, "anonUserId": anon_user_id},
+		"metadata": {"order_id": order_id, "email": email, "anonUserId": anon_user_id, "user_id": user_id},
 		"confirmation": {"type": "redirect", "return_url": return_url},
 	}
 	# Добавим чек, если есть email
