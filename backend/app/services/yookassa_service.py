@@ -20,19 +20,12 @@ def create_payment(order_id: str, amount_rub: float, description: str, return_ur
 	Документация YooKassa: POST /v3/payments
 	"""
 	url = f"{settings.yookassa_api_base}/v3/payments"
-	# Определим данные покупателя для чека
+	# Определим данные покупателя для чека: email обязателен (фоллбэк если нет), full_name добавляем опционально
 	fallback_email = getattr(settings, "yookassa_fallback_receipt_email", None)
-	receipt_customer: Dict[str, Any] = {}
-	if email:
-		receipt_customer["email"] = email
-	elif fallback_email:
-		receipt_customer["email"] = fallback_email
-	elif telegram_username:
-		# Если нет email, можем указать ФИО/username как идентификатор покупателя
+	receipt_email = email or fallback_email or "no-email@kreatum.ai"
+	receipt_customer: Dict[str, Any] = {"email": receipt_email}
+	if telegram_username:
 		receipt_customer["full_name"] = telegram_username
-	else:
-		# Технический email, чтобы избежать 400 invalid_request (receipt required)
-		receipt_customer["email"] = "no-email@kreatum.ai"
 	tax_system_code = getattr(settings, "yookassa_tax_system_code", 1)
 	vat_code = getattr(settings, "yookassa_vat_code", 1)
 	payload_base: Dict[str, Any] = {
@@ -82,26 +75,18 @@ def create_payment(order_id: str, amount_rub: float, description: str, return_ur
 			err_text = resp.text
 		except Exception:
 			err_text = None
-		# Если ошибка из-за некорректного чека — пробуем повторить без чека
+		# Если ошибка из-за чека — логируем подробности, но не убираем чек (магазин требует чек)
 		text_lower = (err_text or "").lower()
 		if resp.status_code == 400 and "receipt" in text_lower:
-			logger.warning("YooKassa responded 400 due to receipt for order_id=%s, retrying without receipt", order_id)
-			payload_no_receipt: Dict[str, Any] = dict(payload_base)
-			headers_retry = dict(headers)
-			headers_retry["Idempotence-Key"] = str(uuid.uuid4())
-			resp_retry = requests.post(url, json=payload_no_receipt, headers=headers_retry, timeout=20)
-			if not resp_retry.ok:
-				try:
-					return {"error": {"status": resp_retry.status_code, "text": resp_retry.text}}
-				except Exception:
-					resp_retry.raise_for_status()
-			resp = resp_retry
-		else:
-			# вернём подробности ошибки вызывающей стороне
-			try:
-				return {"error": {"status": resp.status_code, "text": err_text or ""}}
-			except Exception:
-				resp.raise_for_status()
+			logger.error(
+				"YooKassa 400 invalid receipt: order_id=%s customer_keys=%s vat=%s tax_system=%s text=%s",
+				order_id, list(receipt_customer.keys()), vat_code, tax_system_code, (err_text or "")[:500]
+			)
+		# вернём подробности ошибки вызывающей стороне
+		try:
+			return {"error": {"status": resp.status_code, "text": err_text or ""}}
+		except Exception:
+			resp.raise_for_status()
 	data = resp.json()
 	confirmation_url = data.get("confirmation", {}).get("confirmation_url")
 	payment_id = data.get("id")
