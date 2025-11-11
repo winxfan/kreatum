@@ -20,6 +20,21 @@ def create_payment(order_id: str, amount_rub: float, description: str, return_ur
 	Документация YooKassa: POST /v3/payments
 	"""
 	url = f"{settings.yookassa_api_base}/v3/payments"
+	# Определим данные покупателя для чека
+	fallback_email = getattr(settings, "yookassa_fallback_receipt_email", None)
+	receipt_customer: Dict[str, Any] = {}
+	if email:
+		receipt_customer["email"] = email
+	elif fallback_email:
+		receipt_customer["email"] = fallback_email
+	elif telegram_username:
+		# Если нет email, можем указать ФИО/username как идентификатор покупателя
+		receipt_customer["full_name"] = telegram_username
+	else:
+		# Технический email, чтобы избежать 400 invalid_request (receipt required)
+		receipt_customer["email"] = "no-email@kreatum.ai"
+	tax_system_code = getattr(settings, "yookassa_tax_system_code", 1)
+	vat_code = getattr(settings, "yookassa_vat_code", 1)
 	payload_base: Dict[str, Any] = {
 		"amount": {"value": f"{amount_rub:.2f}", "currency": "RUB"},
 		"capture": True,
@@ -34,24 +49,22 @@ def create_payment(order_id: str, amount_rub: float, description: str, return_ur
 		},
 		"confirmation": {"type": "redirect", "return_url": return_url},
 	}
-	include_receipt = bool(email)
-	# Сформируем payload с чеком (если есть email)
+	# Сформируем payload с чеком (всегда включаем receipt)
 	payload: Dict[str, Any] = dict(payload_base)
-	if include_receipt:
-		payload["receipt"] = {
-			"customer": {"email": email},
-			"tax_system_code": 1,
-			"items": [
-				{
-					"description": description[:128] or "Оживление видео",
-					"amount": {"value": f"{amount_rub:.2f}", "currency": "RUB"},
-					"quantity": "1.00",
-					"vat_code": 1,
-					"payment_subject": "service",
-					"payment_mode": "full_payment",
-				}
-			]
-		}
+	payload["receipt"] = {
+		"customer": receipt_customer,
+		"tax_system_code": tax_system_code,
+		"items": [
+			{
+				"description": description[:128] or "Оживление видео",
+				"amount": {"value": f"{amount_rub:.2f}", "currency": "RUB"},
+				"quantity": "1.00",
+				"vat_code": vat_code,
+				"payment_subject": "service",
+				"payment_mode": "full_payment",
+			}
+		]
+	}
 	headers = {
 		"Authorization": _auth_header(),
 		# уникальный ключ на каждый запрос (а не order_id)
@@ -59,8 +72,8 @@ def create_payment(order_id: str, amount_rub: float, description: str, return_ur
 		"Content-Type": "application/json",
 	}
 	logger.info(
-		"YooKassa create_payment: order_id=%s amount=%.2f include_receipt=%s return_url_present=%s",
-		order_id, amount_rub, include_receipt, bool(return_url)
+		"YooKassa create_payment: order_id=%s amount=%.2f include_receipt=%s return_url_present=%s customer_keys=%s",
+		order_id, amount_rub, True, bool(return_url), list(receipt_customer.keys())
 	)
 	resp = requests.post(url, json=payload, headers=headers, timeout=20)
 	if not resp.ok:
@@ -71,7 +84,7 @@ def create_payment(order_id: str, amount_rub: float, description: str, return_ur
 			err_text = None
 		# Если ошибка из-за некорректного чека — пробуем повторить без чека
 		text_lower = (err_text or "").lower()
-		if include_receipt and resp.status_code == 400 and "receipt" in text_lower:
+		if resp.status_code == 400 and "receipt" in text_lower:
 			logger.warning("YooKassa responded 400 due to receipt for order_id=%s, retrying without receipt", order_id)
 			payload_no_receipt: Dict[str, Any] = dict(payload_base)
 			headers_retry = dict(headers)

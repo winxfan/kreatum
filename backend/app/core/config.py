@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     yookassa_shop_id: str | None = Field(default=None, alias="YOOKASSA_SHOP_ID")
     yookassa_api_key: str | None = Field(default=None, alias="YOOKASSA_API_KEY")
     yookassa_api_base: str = Field(default="https://api.yookassa.ru", alias="YOOKASSA_API_BASE")
+    # Реквизиты для чеков
+    yookassa_fallback_receipt_email: str | None = Field(default=None, alias="YOOKASSA_FALLBACK_RECEIPT_EMAIL")
+    yookassa_tax_system_code: int = Field(default=1, alias="YOOKASSA_TAX_SYSTEM_CODE")
+    yookassa_vat_code: int = Field(default=1, alias="YOOKASSA_VAT_CODE")
 
     # OAuth
     oauth_yandex_client_id: str | None = Field(default=None, alias="OAUTH_YANDEX_CLIENT_ID")
