@@ -14,13 +14,62 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 logger = logging.getLogger(__name__)
 
 
-def _estimate_tokens_by_model(model: Model) -> int:
-    """Токены = рубли. Берём cost_per_unit_tokens (RUB) и округляем вверх."""
+def _estimate_tokens_by_model(model: Model, input_objects: list | None) -> int:
+    """
+    Рассчитывает требуемые токены для модели.
+    - Для моделей с format_to='video' и cost_unit='second' умножаем стоимость на длительность (duration).
+      Приоритет источников duration: input[name='duration'].value -> model.options.options[].default_value -> 5.
+    - Для остальных (например, format_to='image') — списываем за результат без умножения.
+    """
     try:
-        price_rub = Decimal(model.cost_per_unit_tokens or 0)
+        base_price = Decimal(model.cost_per_unit_tokens or 0)
     except Exception:
-        price_rub = Decimal(0)
-    tokens = int(price_rub.quantize(Decimal("1"), rounding=ROUND_UP)) if price_rub > 0 else 0
+        base_price = Decimal(0)
+
+    fmt_to = (model.format_to or "").strip().lower()
+    cost_unit = (model.cost_unit or "").strip().lower()
+
+    if fmt_to == "video" and cost_unit == "second":
+        # 1) duration из входа
+        duration_sec: int | None = None
+        if isinstance(input_objects, list):
+            for item in input_objects:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("name") == "duration":
+                    val = item.get("value")
+                    try:
+                        cand = int(val) if val is not None else None
+                        if cand and cand > 0:
+                            duration_sec = cand
+                            break
+                    except Exception:
+                        continue
+        # 2) duration из model.options
+        if duration_sec is None:
+            try:
+                options_obj = model.options or {}
+                options_list = options_obj.get("options") if isinstance(options_obj, dict) else None
+                if isinstance(options_list, list):
+                    for opt in options_list:
+                        if isinstance(opt, dict) and opt.get("name") == "duration":
+                            dv = opt.get("default_value")
+                            cand = int(dv) if dv is not None else None
+                            if cand and cand > 0:
+                                duration_sec = cand
+                                break
+            except Exception:
+                duration_sec = None
+        # 3) дефолт если ничего не нашли
+        if duration_sec is None:
+            duration_sec = 5
+
+        tokens = (base_price * Decimal(duration_sec)) if base_price > 0 else Decimal(0)
+        tokens_int = int(tokens.quantize(Decimal("1"), rounding=ROUND_UP)) if tokens > 0 else 0
+        return max(tokens_int, 1)
+
+    # Невидео или не поминутная тарификация — списываем за результат
+    tokens = int(base_price.quantize(Decimal("1"), rounding=ROUND_UP)) if base_price > 0 else 0
     return max(tokens, 1)
 
 def _extract_prompt_from_input(input_objects: list | None) -> str | None:
@@ -141,7 +190,7 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
             logger.warning("create_job: missing prompt for format_from=text user_id=%s", user_id)
             raise HTTPException(status_code=400, detail="prompt is required in input[name=prompt].value for format_from=text")
 
-    tokens_needed = _estimate_tokens_by_model(model)
+    tokens_needed = _estimate_tokens_by_model(model, input_objects)
     job = Job(
         user_id=user.id,
         model_id=model.id,

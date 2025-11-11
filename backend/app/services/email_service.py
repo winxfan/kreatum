@@ -132,39 +132,74 @@ def send_email_with_links(recipient_email: str, links: List[Any], request_id: Op
 		smtp.send_message(msg)
 
 
-def send_payment_receipt(recipient_email: str, amount_rub: float, order_id: str, payment_id: str) -> None:
+def send_payment_request_email(recipient_email: str, amount: Any, payment_url: str) -> None:
+	"""Отправить письмо с просьбой оплатить заказ.
+	Текст: ваше фото получено, для оживления нужно оплатить — {сумма}.
+	Кнопка: Перейти к оплате (ведёт на payment_url).
+	"""
+
+	def _format_amount(value: Any) -> str:
+		try:
+			# Если строка — вернём как есть (считаем уже отформатированной)
+			if isinstance(value, str):
+				return value
+			# Попробуем привести к числу и отформатировать в RUB
+			num = float(value)
+			return f"{num:.2f} ₽"
+		except Exception:
+			return str(value)
+
+	formatted_amount = _format_amount(amount)
+
+	# Текстовая версия
+	text_lines = [
+		"📸 Мы получили ваше фото!",
+		"",
+		f"Для оживления фото необходимо оплатить — {formatted_amount}.",
+		"",
+		"👉 Нажмите на кнопку ниже, чтобы перейти к оплате:",
+		payment_url,
+		"",
+		"Если кнопка не работает, скопируйте ссылку выше в адресную строку браузера.",
+		"",
+		"С любовью,",
+		"Команда ОживиФото.online",
+	]
+	text_body = "\n".join(text_lines)
+
+	# HTML-версия
+	html_cta = f'<a href="{payment_url}" target="_blank" rel="noopener" style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; padding:14px 22px; border-radius:10px; font-weight:600;">Перейти к оплате</a>'
+	html_body = f"""
+	<div style="background:#f8fafc; padding:24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; color:#0f172a;">
+		<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px; margin:0 auto; background:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 4px 16px rgba(2, 6, 23, 0.08);\">
+			<tr>
+				<td style=\"padding:28px 28px 8px 28px; text-align:center;\">
+					<div style=\"font-size:22px; font-weight:700;\">📸 Мы получили ваше фото!</div>
+				</td>
+			</tr>
+			<tr>
+				<td style=\"padding:8px 28px 0 28px; font-size:16px; line-height:1.6;\">
+					<p style=\"margin:0 0 12px 0;\">Чтобы оживить его, необходимо оплатить заказ.</p>
+					<p style=\"margin:0 0 16px 0;\"><strong>К оплате: {formatted_amount}</strong></p>
+					<div style=\"text-align:center; margin:18px 0 6px 0;\">{html_cta}</div>
+					<p style=\"margin:18px 0 6px 0; color:#64748b; font-size:14px;\">Если кнопка не работает, используйте ссылку: <a href="{payment_url}" target="_blank" rel="noopener">{payment_url}</a></p>
+					<p style=\"margin:18px 0 6px 0;\">Спасибо, что с нами 💛</p>
+					<p style=\"margin:0 0 24px 0;\">С любовью,<br/>Команда ОживиФото.online</p>
+				</td>
+			</tr>
+		</table>
+		<div style=\"max-width:640px; margin:12px auto 0 auto; text-align:center; color:#64748b; font-size:12px;\">
+			© {settings.frontend_return_url_base or 'ОживиФото.online'}
+		</div>
+	</div>
+	"""
+
 	msg = EmailMessage()
-	msg["Subject"] = "Оплата получена"
+	msg["Subject"] = "📸 Мы получили ваше фото — осталось оплатить заказ"
 	msg["From"] = settings.smtp_email or settings.smtp_username
 	msg["To"] = recipient_email
-	body = (
-		f"Спасибо за оплату!\n\n"
-		f"Сумма: {amount_rub:.2f} RUB\n"
-		f"Заказ: {order_id}\n"
-		f"Платеж: {payment_id}\n"
-	)
-	msg.set_content(body)
-	with _smtp_conn() as smtp:
-		user = settings.smtp_email or settings.smtp_username
-		if user and settings.smtp_password:
-			smtp.login(user, settings.smtp_password)
-		smtp.send_message(msg)
-
-
-def send_email_with_attachments(
-	recipient_email: str,
-	subject: str,
-	body_text: str,
-	attachments: List[Tuple[str, bytes, Optional[str]]],  # (filename, content, content_type)
-) -> None:
-	msg = EmailMessage()
-	msg["Subject"] = subject
-	msg["From"] = settings.smtp_email or settings.smtp_username
-	msg["To"] = recipient_email
-	msg.set_content(body_text)
-	for filename, content, content_type in attachments:
-		maintype, subtype = (content_type or "application/octet-stream").split("/", 1)
-		msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)
+	msg.set_content(text_body)
+	msg.add_alternative(html_body, subtype="html")
 	with _smtp_conn() as smtp:
 		user = settings.smtp_email or settings.smtp_username
 		if user and settings.smtp_password:

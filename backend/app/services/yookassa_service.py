@@ -32,7 +32,7 @@ def create_payment(order_id: str, amount_rub: float, description: str, return_ur
 			"tax_system_code": 1,
 			"items": [
 				{
-					"description": description[:128] or "Video generation",
+					"description": description[:128] or "Оживление видео",
 					"amount": {"value": f"{amount_rub:.2f}", "currency": "RUB"},
 					"quantity": "1.00",
 					"vat_code": 1,
