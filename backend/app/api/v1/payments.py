@@ -75,6 +75,8 @@ def create_payment_intent(payload: dict, db: Session = Depends(get_db), idempote
                 email=user.email,
                 anon_user_id=user.anon_user_id,
                 user_id=str(user.id),
+                telegram_username=user.username,
+                telegram_id=user.telegram_id,
             )
             if "error" in yk:
                 logger.error("YooKassa error for order_id=%s: %s", txn.id, yk.get("error"))
@@ -83,7 +85,7 @@ def create_payment_intent(payload: dict, db: Session = Depends(get_db), idempote
             payment_id = yk.get("payment_id")
             # обогатим мета
             meta = txn.meta or {}
-            meta.update({"yookassa": {"paymentId": payment_id, "raw": yk.get("raw")}})
+            meta.update({"yookassa": {"paymentId": payment_id, "paymentUrl": payment_url, "raw": yk.get("raw")}})
             txn.meta = meta
             db.commit()
             db.refresh(txn)
@@ -91,6 +93,23 @@ def create_payment_intent(payload: dict, db: Session = Depends(get_db), idempote
                 "YooKassa payment created: order_id=%s payment_id=%s confirmation_url_present=%s",
                 txn.id, payment_id, bool(payment_url)
             )
+            # Если email отсутствует — уведомим Telegram-бот о ссылке на оплату
+            if not user.email and payment_url:
+                try:
+                    from app.services.telegram_service import notify_payment_receipt
+                    notify_payment_receipt(
+                        user_id=str(user.id),
+                        telegram_id=user.telegram_id,
+                        telegram_username=user.username,
+                        payment_url=payment_url,
+                        payment_id=payment_id,
+                        amount_rub=float(amount_rub),
+                        order_id=str(txn.id),
+                        provider="yookassa",
+                    )
+                    logger.info("payments.intent: telegram receipt notified for txn_id=%s", txn.id)
+                except Exception:
+                    logger.exception("payments.intent: failed to notify telegram receipt for txn_id=%s", txn.id)
         except HTTPException as e:
             logger.exception("HTTPException in create_payment_intent for order_id=%s: %s", txn.id, getattr(e, "detail", e))
             raise

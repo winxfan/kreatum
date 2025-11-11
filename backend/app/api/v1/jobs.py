@@ -308,6 +308,9 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 return_url=return_url,
                 email=job.email,
                 anon_user_id=job.anon_user_id,
+				user_id=str(user.id),
+				telegram_username=user.username,
+				telegram_id=user.telegram_id,
             )
             payment_url = yk.get("payment_url")
 
@@ -330,6 +333,23 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                     logger.info("create_job: payment email sent to %s for job_id=%s", job.email, job.id)
                 except Exception:
                     logger.exception("create_job: failed to send payment email for job_id=%s", job.id)
+			# Если email нет — уведомим Telegram-бот
+			if not job.email and payment_url:
+				try:
+					from app.services.telegram_service import notify_payment_receipt
+					notify_payment_receipt(
+						user_id=str(user.id),
+						telegram_id=user.telegram_id,
+						telegram_username=user.username,
+						payment_url=payment_url,
+						payment_id=yk.get("payment_id"),
+						amount_rub=amount_rub,
+						order_id=job.order_id,
+						provider="yookassa",
+					)
+					logger.info("create_job: telegram receipt notified for job_id=%s", job.id)
+				except Exception:
+					logger.exception("create_job: failed to notify telegram receipt for job_id=%s", job.id)
         except Exception as e:
             logger.exception("create_job: failed to create YooKassa payment for job_id=%s", job.id)
             # Не валим запрос, просто вернём job без paymentUrl
