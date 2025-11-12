@@ -55,6 +55,18 @@ def create_payment_intent(payload: dict, db: Session = Depends(get_db), idempote
         txn.id, reference, user.id, amount_rub, provider
     )
 
+    # Рассчёт бонусов для пополнения баланса
+    credit_rub_dec = Decimal(str(amount_rub))
+    if provider == "yookassa":
+        # Точные акции по суммам
+        if Decimal("100") == credit_rub_dec:
+            credit_rub_dec = Decimal("100")
+        elif Decimal("500") == credit_rub_dec:
+            credit_rub_dec = Decimal("575")
+        elif Decimal("1000") == credit_rub_dec:
+            credit_rub_dec = Decimal("1250")
+        # иначе без бонуса — оставляем исходную сумму
+
     # Реальная генерация ссылки YooKassa
     payment_url = None
     payment_id = None
@@ -77,6 +89,11 @@ def create_payment_intent(payload: dict, db: Session = Depends(get_db), idempote
                 user_id=str(user.id),
                 telegram_username=user.username,
                 telegram_id=user.telegram_id,
+                extra_metadata={
+                    "topup": True,
+                    "credit_rub": float(credit_rub_dec),
+                    "original_amount_rub": float(amount_rub),
+                },
             )
             if "error" in yk:
                 logger.error("YooKassa error for order_id=%s: %s", txn.id, yk.get("error"))
@@ -85,7 +102,13 @@ def create_payment_intent(payload: dict, db: Session = Depends(get_db), idempote
             payment_id = yk.get("payment_id")
             # обогатим мета
             meta = txn.meta or {}
-            meta.update({"yookassa": {"paymentId": payment_id, "paymentUrl": payment_url, "raw": yk.get("raw")}})
+            meta.update({
+                "yookassa": {"paymentId": payment_id, "paymentUrl": payment_url, "raw": yk.get("raw")},
+                "topup": True,
+                "creditRub": float(credit_rub_dec),
+                "originalAmountRub": float(amount_rub),
+                "bonusRub": float(credit_rub_dec - Decimal(str(amount_rub))),
+            })
             txn.meta = meta
             db.commit()
             db.refresh(txn)

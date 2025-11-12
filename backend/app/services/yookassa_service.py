@@ -15,7 +15,7 @@ def _auth_header() -> str:
 	return "Basic " + base64.b64encode(basic).decode()
 
 
-def create_payment(order_id: str, amount_rub: float, description: str, return_url: str, email: str | None = None, anon_user_id: str | None = None, user_id: str | None = None, telegram_username: str | None = None, telegram_id: str | None = None) -> Dict[str, Any]:
+def create_payment(order_id: str, amount_rub: float, description: str, return_url: str, email: str | None = None, anon_user_id: str | None = None, user_id: str | None = None, telegram_username: str | None = None, telegram_id: str | None = None, extra_metadata: Dict[str, Any] | None = None) -> Dict[str, Any]:
 	"""Создать платеж и получить confirmation_url.
 	Документация YooKassa: POST /v3/payments
 	"""
@@ -28,18 +28,24 @@ def create_payment(order_id: str, amount_rub: float, description: str, return_ur
 		receipt_customer["full_name"] = telegram_username
 	tax_system_code = getattr(settings, "yookassa_tax_system_code", 1)
 	vat_code = getattr(settings, "yookassa_vat_code", 1)
+	metadata: Dict[str, Any] = {
+		"order_id": order_id,
+		"email": email,
+		"anonUserId": anon_user_id,
+		"user_id": user_id,
+		"telegram_username": telegram_username,
+		"telegram_id": telegram_id,
+	}
+	if extra_metadata and isinstance(extra_metadata, dict):
+		try:
+			metadata.update(extra_metadata)
+		except Exception:
+			pass
 	payload_base: Dict[str, Any] = {
 		"amount": {"value": f"{amount_rub:.2f}", "currency": "RUB"},
 		"capture": True,
 		"description": description,
-		"metadata": {
-			"order_id": order_id,
-			"email": email,
-			"anonUserId": anon_user_id,
-			"user_id": user_id,
-			"telegram_username": telegram_username,
-			"telegram_id": telegram_id,
-		},
+		"metadata": metadata,
 		"confirmation": {"type": "redirect", "return_url": return_url},
 	}
 	# Сформируем payload с чеком (всегда включаем receipt)

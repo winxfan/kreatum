@@ -84,6 +84,13 @@ async def payments_webhook(provider: str, request: Request, db: Session = Depend
                     user = db.query(User).filter(User.id == user_id_meta).first()
                     if user:
                         try:
+                            # Рассчитаем сумму для зачисления с учетом бонуса (если передана в metadata)
+                            credit_rub_val = metadata.get("credit_rub")
+                            credit_rub_dec = None
+                            try:
+                                credit_rub_dec = Decimal(str(credit_rub_val)) if credit_rub_val is not None else Decimal(str(amount_val))
+                            except Exception:
+                                credit_rub_dec = Decimal(str(amount_val))
                             txn = Transaction(
                                 user_id=user.id,
                                 job_id=None,
@@ -97,7 +104,7 @@ async def payments_webhook(provider: str, request: Request, db: Session = Depend
                             )
                             db.add(txn)
                             # Конвертация RUB -> токены и зачисление
-                            tokens = rubles_to_tokens(Decimal(str(amount_val)))
+                            tokens = rubles_to_tokens(credit_rub_dec)
                             user.balance_tokens = (user.balance_tokens or 0) + Decimal(tokens)
                             txn.tokens_delta = Decimal(tokens)
                             db.commit()
