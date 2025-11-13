@@ -12,6 +12,7 @@ from app.services.fal import get_request_status, get_request_response, extract_m
 from app.services.s3_utils import s3_key_for_video, upload_bytes, get_file_url_with_expiry
 from app.core.config import settings
 from app.services.telegram_service import notify_job_event
+from app.services.email_service import send_email_with_links
 
 
 # Используем uvicorn.error, чтобы гарантировать попадание в стандартные логи сервера
@@ -153,14 +154,28 @@ def run_poller(interval_seconds: int = 20) -> None:
                                 public_url,
                             )
 
-                            notify_job_event(
-                                event="job.completed",
-                                job_id=str(job.id),
-                                user_id=str(job.user_id) if job.user_id else None,
-                                status="done",
-                                service_type=None,
-                                result_url=public_url,
-                            )
+                            # Канал уведомления:
+                            # - для задач с generation_source="site" и наличием email — отправляем письмо с ссылкой
+                            # - иначе — уведомляем Telegram-бот
+                            try:
+                                gen_src = (getattr(job, "generation_source", None) or "").strip().lower()
+                            except Exception:
+                                gen_src = None
+                            if gen_src == "site" and job.email:
+                                try:
+                                    send_email_with_links(recipient_email=job.email, links=[public_url], job_id=str(job.id))
+                                    logger.info("fal.poll: email with result sent to %s for job_id=%s", job.email, job.id)
+                                except Exception:
+                                    logger.exception("fal.poll: failed to send result email job_id=%s", job.id)
+                            else:
+                                notify_job_event(
+                                    event="job.completed",
+                                    job_id=str(job.id),
+                                    user_id=str(job.user_id) if job.user_id else None,
+                                    status="done",
+                                    service_type=None,
+                                    result_url=public_url,
+                                )
                             continue
                         if st_status in ("FAILED", "CANCELLED", "ERROR"):
                             job.status = "failed"
