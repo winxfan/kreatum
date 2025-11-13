@@ -14,7 +14,7 @@ def _smtp_conn():
 
 def send_email_with_links(recipient_email: str, links: List[Any], job_id: Optional[str] = None) -> None:
 	# Преобразуем входные элементы к публичным ссылкам
-	from app.utils.s3_utils import parse_s3_url, get_file_url_with_expiry
+	from app.services.s3_utils import parse_s3_url, get_file_url_with_expiry
 
 	def _to_public_url(item: Any) -> Optional[str]:
 		# Поддержка словарей с известными полями
