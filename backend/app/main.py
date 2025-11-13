@@ -42,6 +42,8 @@ app.add_middleware(SessionMiddleware, secret_key=settings.jwt_secret_key)
 cors_origins = [
     "http://localhost:3000",
     "https://localhost:3000",
+    "https://xn--b1ahgb0aea5aq.online",
+    "http://xn--b1ahgb0aea5aq.online",
 ]
 if settings.frontend_return_url_base:
     cors_origins.append(settings.frontend_return_url_base)
