@@ -131,6 +131,9 @@ def _extract_prompt_from_input(input_objects: list | None) -> str | None:
     for it in input_objects:
         if not isinstance(it, dict):
             continue
+        # Поддержка упрощённого формата: prompt прямо в объекте
+        if isinstance(it.get("prompt"), str) and it.get("prompt").strip():
+            return it.get("prompt").strip()
         name = it.get("name")
         typ = it.get("type")
         if name == "prompt" and (typ in ("text", None)):
@@ -248,17 +251,39 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     # Предварительная валидация входа по форматам
     image_url: str | None = None
     if fmt_from == "image":
+        # Поддержим несколько вариантов структуры:
+        # - { type: "image", url: "..." }
+        # - { image_url: "..." }
+        # - { value: "..." } или { value: ["...", ...] }
         for it in input_objects or []:
-            if isinstance(it, dict) and it.get("type") in ("image", None):
-                url_val = it.get("url")
-                if isinstance(url_val, str) and url_val:
-                    image_url = url_val
+            if not isinstance(it, dict):
+                continue
+            # прямые поля
+            for key in ("url", "image_url"):
+                val = it.get(key)
+                if isinstance(val, str) and val:
+                    image_url = val
+                    break
+            if image_url:
+                break
+            # value как строка или массив
+            val = it.get("value")
+            if isinstance(val, str) and val:
+                image_url = val
+                break
+            if isinstance(val, list):
+                for cand in val:
+                    if isinstance(cand, str) and cand:
+                        image_url = cand
+                        break
+                if image_url:
                     break
         if not image_url:
             logger.warning(
-                "create_job: missing image url for format_from=image user_id=%s", user_id
+                "create_job: missing image url for format_from=image user_id=%s (expected one of: input[].url | input[].image_url | input[].value)",
+                user_id,
             )
-            raise HTTPException(status_code=400, detail="image url is required in input[0].url for format_from=image")
+            raise HTTPException(status_code=400, detail="image url is required in input (url | image_url | value) for format_from=image")
     if fmt_from == "text":
         if not isinstance(prompt, str) or not prompt.strip():
             logger.warning("create_job: missing prompt for format_from=text user_id=%s", user_id)
