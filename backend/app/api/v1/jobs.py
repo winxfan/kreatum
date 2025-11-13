@@ -271,6 +271,24 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     fmt_from = (model.format_from or "").strip().lower()
     fmt_to = (model.format_to or "").strip().lower()
 
+    # Нормализуем тип трафика под ENUM в БД: 'site' маппим на 'landing'
+    normalized_traffic_type = None
+    generation_source = None
+    try:
+        tt_raw = (traffic_type or "").strip().lower()
+        if tt_raw == "site":
+            normalized_traffic_type = "landing"
+            generation_source = "site"
+        elif tt_raw in ("landing", "app", "bot"):
+            normalized_traffic_type = tt_raw
+            generation_source = "bot" if tt_raw == "bot" else None
+        else:
+            normalized_traffic_type = None
+            generation_source = None
+    except Exception:
+        normalized_traffic_type = None
+        generation_source = None
+
     # Предварительная валидация входа по форматам
     image_url: str | None = None
     if fmt_from == "image":
@@ -318,11 +336,12 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
         model_id=model.id,
         email=email,
         anon_user_id=anon_user_id,
+        generation_source=generation_source or "bot",
         input=input_objects,
         meta={"description": description, "prompt": prompt} if (description or prompt) else None,
         tokens_reserved=0,
         tokens_consumed=0,
-        traffic_type=traffic_type,
+        traffic_type=normalized_traffic_type,
         cost_unit=model.cost_unit,
         cost_per_unit_tokens=model.cost_per_unit_tokens,
     )
