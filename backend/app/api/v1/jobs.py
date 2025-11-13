@@ -194,6 +194,8 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
     traffic_type = payload.get("trafficType")
     email = payload.get("email")
     anon_user_id = payload.get("anonUserId")
+    telegram_username = payload.get("telegramUsername") or payload.get("username")
+    telegram_id = payload.get("telegramId")
     input_objects = payload.get("input")
     description = payload.get("description")
     # prompt теперь извлекаем из input (name=prompt, type=text, value)
@@ -204,19 +206,36 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
         model_id,
         len(input_objects) if isinstance(input_objects, list) else None,
     )
-    if not user_id or not model_id or not isinstance(input_objects, list):
+    if (not user_id and not anon_user_id) or not model_id or not isinstance(input_objects, list):
         logger.warning(
-            "create_job: invalid payload user_id=%s model_id=%s has_input_list=%s",
+            "create_job: invalid payload user_id=%s anon_user_id=%s model_id=%s has_input_list=%s",
             user_id,
+            anon_user_id,
             model_id,
             isinstance(input_objects, list),
         )
-        raise HTTPException(status_code=400, detail="userId, modelId, input are required")
+        raise HTTPException(status_code=400, detail="userId or anonUserId, modelId, input are required")
 
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        logger.warning("create_job: user not found user_id=%s", user_id)
-        raise HTTPException(status_code=404, detail="User not found")
+    # Находим пользователя: по userId или создаём/находим по anonUserId
+    user: User | None = None
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.warning("create_job: user not found user_id=%s", user_id)
+            raise HTTPException(status_code=404, detail="User not found")
+    else:
+        # Попробуем найти существующего по anon_user_id, иначе создадим
+        user = db.query(User).filter(User.anon_user_id == anon_user_id).first()
+        if not user:
+            user = User(
+                anon_user_id=anon_user_id,
+                email=email,
+                username=telegram_username,
+                telegram_id=telegram_id,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
 
     # Получаем модель и её форматы
     model: Model | None = db.query(Model).filter(Model.id == model_id).first()
