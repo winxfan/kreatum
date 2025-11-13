@@ -3,8 +3,10 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.db.models import WebhookLog, Transaction, User, Job
+from app.db.models import WebhookLog, Transaction, User, Job, Model
 from app.services.email_service import send_email_with_links
+from app.services.fal import submit_generation
+from app.services.telegram_service import notify_topup_success
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"]) 
 
@@ -33,29 +35,28 @@ async def payments_webhook(provider: str, request: Request, db: Session = Depend
         if order_id and status in ("succeeded", "succeeded_with_3ds", "waiting_for_capture"):
             job = db.query(Job).filter(Job.order_id == order_id).first()
             if job:
-                # обновим финансы/статус job
+                # 1) обновим финансы/флаги оплаты
                 if amount_val is not None:
                     try:
                         job.price_rub = Decimal(str(amount_val))
                     except Exception:
                         pass
                 job.is_paid = True
-                # по требованию: при оплате сразу done
-                job.status = "done"
+                job.status = "queued"
                 info = job.payment_info or {}
                 info.update({"yookassa": obj})
                 job.payment_info = info
                 db.commit()
                 db.refresh(job)
 
-                # сохраним транзакцию
+                # 2) зафиксируем транзакцию шлюза
                 try:
                     txn = Transaction(
                         user_id=job.user_id,
                         job_id=job.id,
                         type="gateway_payment",
                         provider="yookassa",
-                        status="success" if status.startswith("succeeded") else "pending",
+                        status="success" if str(status).startswith("succeeded") else "pending",
                         amount_rub=Decimal(str(amount_val)) if amount_val is not None else None,
                         currency="RUB",
                         reference=obj.get("id"),
@@ -64,18 +65,141 @@ async def payments_webhook(provider: str, request: Request, db: Session = Depend
                     db.add(txn)
                     db.commit()
                 except Exception:
-                    # не прерываем обработку, если не удалось записать транзакцию
                     db.rollback()
 
-                # письмо с ссылкой на результат (или хотя бы на страницу с job_id)
+                # 3) Запустим генерацию в FAL (по формату модели)
                 try:
-                    links = [job.result_url] if job.result_url else []
-                    if job.email:
-                        send_email_with_links(recipient_email=job.email, links=links, job_id=str(job.id))
-                except Exception:
-                    # игнор ошибок отправки письма
-                    pass
+                    model = None
+                    if job.model_id:
+                        model = db.query(Model).filter(Model.id == job.model_id).first()
+                    fmt_from = (model.format_from or "").strip().lower() if model and model.format_from else None
+                    fmt_to = (model.format_to or "").strip().lower() if model and model.format_to else None
+                    options = model.options or {} if model and isinstance(model.options, dict) else {}
+                    endpoint = options.get("fal_endpoint") or options.get("endpoint") if isinstance(options, dict) else None
+                    if not endpoint and model and model.name:
+                        endpoint = model.name
 
+                    input_objects = job.input if isinstance(job.input, list) else []
+
+                    def _extract_prompt(input_objects_local: list | None) -> str | None:
+                        if not isinstance(input_objects_local, list):
+                            return None
+                        for it in input_objects_local:
+                            if not isinstance(it, dict):
+                                continue
+                            if isinstance(it.get("prompt"), str) and it.get("prompt").strip():
+                                return it.get("prompt").strip()
+                            if it.get("name") == "prompt":
+                                val = it.get("value")
+                                if isinstance(val, str) and val.strip():
+                                    return val.strip()
+                        for it in input_objects_local:
+                            if isinstance(it, dict) and it.get("type") == "text":
+                                val = it.get("value")
+                                if isinstance(val, str) and val.strip():
+                                    return val.strip()
+                        return None
+
+                    def _extract_image_url(input_objects_local: list | None) -> str | None:
+                        if not isinstance(input_objects_local, list):
+                            return None
+                        for it in input_objects_local:
+                            if not isinstance(it, dict):
+                                continue
+                            for key in ("url", "image_url"):
+                                val = it.get(key)
+                                if isinstance(val, str) and val:
+                                    return val
+                            val = it.get("value")
+                            if isinstance(val, str) and val:
+                                return val
+                            if isinstance(val, list):
+                                for cand in val:
+                                    if isinstance(cand, str) and cand:
+                                        return cand
+                        return None
+
+                    def _extract_extra_args(input_objects_local: list | None) -> dict:
+                        args: dict = {}
+                        if not isinstance(input_objects_local, list):
+                            return args
+                        for it in input_objects_local:
+                            if not isinstance(it, dict):
+                                continue
+                            name = it.get("name")
+                            typ = it.get("type")
+                            if not isinstance(name, str) or name in ("prompt", "image_url"):
+                                continue
+                            if typ == "upload_zone":
+                                continue
+                            if "value" in it:
+                                val = it.get("value")
+                                if isinstance(val, (str, int, float, bool)) and val != "":
+                                    args[name] = val
+                        return args
+
+                    prompt = _extract_prompt(input_objects) or ((job.meta or {}).get("prompt") if isinstance(job.meta, dict) else None) or ""
+                    image_url = _extract_image_url(input_objects)
+                    extra_args = _extract_extra_args(input_objects)
+
+                    # Выбираем сценарий
+                    if fmt_from == "image" and fmt_to == "video":
+                        local_prompt = prompt or "Animate this image"
+                        fal_resp = submit_generation(
+                            image_url=image_url,
+                            prompt=local_prompt,
+                            order_id=str(job.id),
+                            item_index=0,
+                            anon_user_id=None,
+                            endpoint=endpoint,
+                            extra_args=extra_args,
+                        )
+                    elif fmt_from == "text" and fmt_to == "image":
+                        fal_resp = submit_generation(
+                            image_url=None,
+                            prompt=prompt or "Generate image",
+                            order_id=str(job.id),
+                            item_index=0,
+                            anon_user_id=None,
+                            endpoint=endpoint,
+                            extra_args=extra_args,
+                        )
+                    elif fmt_from == "image" and fmt_to == "image":
+                        fal_resp = submit_generation(
+                            image_url=image_url,
+                            prompt=prompt or "",
+                            order_id=str(job.id),
+                            item_index=0,
+                            anon_user_id=None,
+                            endpoint=endpoint,
+                            extra_args=extra_args,
+                        )
+                    elif fmt_from == "text" and fmt_to == "video":
+                        fal_resp = submit_generation(
+                            image_url=None,
+                            prompt=prompt or "Generate video",
+                            order_id=str(job.id),
+                            item_index=0,
+                            anon_user_id=None,
+                            endpoint=endpoint,
+                            extra_args=extra_args,
+                        )
+                    else:
+                        fal_resp = None
+
+                    if fal_resp and isinstance(fal_resp, dict):
+                        meta = job.meta or {}
+                        meta.update({"fal": {"requestId": fal_resp.get("request_id"), "modelId": fal_resp.get("model_id")}})
+                        job.meta = meta
+                        if fal_resp.get("request_id"):
+                            job.request_id = str(fal_resp.get("request_id"))
+                        db.commit()
+                        db.refresh(job)
+                except Exception:
+                    # Если не удалось запустить FAL — оставляем статус queued; поллер или повторная оплата не требуются
+                    db.rollback()
+
+                # Не отправляем email сейчас — письмо уйдет после завершения в поллере
                 return {"ok": True}
             else:
                 # Пополнение баланса (не привязано к job): берём user_id из metadata
@@ -103,11 +227,23 @@ async def payments_webhook(provider: str, request: Request, db: Session = Depend
                                 meta=payload,
                             )
                             db.add(txn)
-                            # Конвертация RUB -> токены и зачисление
-                            tokens = rubles_to_tokens(credit_rub_dec)
-                            user.balance_tokens = (user.balance_tokens or 0) + Decimal(tokens)
-                            txn.tokens_delta = Decimal(tokens)
+                            # Зачисление средств на баланс (у нас баланс хранится в тех же "токенах", что и списание — фактически RUB)
+                            user.balance_tokens = (user.balance_tokens or 0) + credit_rub_dec
+                            txn.tokens_delta = credit_rub_dec
                             db.commit()
+                            # Оповестим бота об успешном пополнении
+                            try:
+                                notify_topup_success(
+                                    user_id=str(user.id),
+                                    telegram_id=user.telegram_id,
+                                    telegram_username=user.username,
+                                    amount_rub=float(amount_val),
+                                    credit_rub=float(credit_rub_dec),
+                                    payment_id=obj.get("id"),
+                                    order_id=str(txn.id),
+                                )
+                            except Exception:
+                                pass
                         except Exception:
                             db.rollback()
                         return {"ok": True}

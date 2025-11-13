@@ -120,3 +120,49 @@ def notify_payment_receipt(
 		logger.info("telegram.payment_receipt <- %s", resp.status_code)
 	except Exception:
 		logger.exception("failed to notify telegram payment receipt order_id=%s", order_id)
+
+
+def notify_topup_success(
+	*,
+	user_id: Optional[str],
+	telegram_id: Optional[str],
+	telegram_username: Optional[str],
+	amount_rub: float,
+	credit_rub: float,
+	payment_id: Optional[str],
+	order_id: str,
+) -> None:
+	"""Оповещение бота об успешном пополнении баланса.
+
+	Путь: /bot/webhook/topup-success
+	"""
+	base_url = getattr(settings, "tg_bot_server_url", None)
+	if base_url:
+		webhook_url = base_url.rstrip("/") + "/bot/webhook/topup-success"
+	else:
+		webhook_url = getattr(settings, "telegram_webhook_url", None)
+	if not webhook_url:
+		logger.info("telegram webhook url not configured; skip notify topup order_id=%s", order_id)
+		return
+
+	payload: dict[str, Any] = {
+		"userId": user_id,
+		"telegramId": telegram_id,
+		"telegramUsername": telegram_username,
+		"amountRub": amount_rub,
+		"creditRub": credit_rub,
+		"paymentId": payment_id,
+		"orderId": order_id,
+		"provider": "yookassa",
+	}
+	headers = {"Content-Type": "application/json"}
+	try:
+		logger.info(
+			"telegram.topup_success POST %s amount=%.2f credit=%.2f order_id=%s user_id=%s",
+			webhook_url, amount_rub, credit_rub, order_id, user_id
+		)
+		resp = requests.post(webhook_url, json=payload, headers=headers, timeout=15)
+		resp.raise_for_status()
+		logger.info("telegram.topup_success <- %s", resp.status_code)
+	except Exception:
+		logger.exception("failed to notify telegram topup success order_id=%s", order_id)
