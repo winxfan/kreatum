@@ -34,7 +34,7 @@ SMTP_CONFIG = {
 
 # Настройки приложения
 APP_CONFIG = {
-    'frontend_url': os.getenv('FRONTEND_URL', 'http://localhost:3000'),
+    'frontend_url': os.getenv('FRONTEND_URL', 'https://xn--b1ahgb0aea5aq.online'),
     'api_url': os.getenv('API_URL', 'http://localhost:8000'),
 }
 

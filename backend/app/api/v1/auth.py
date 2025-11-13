@@ -40,7 +40,7 @@ async def _handle_oauth_callback(request: Request, provider: str) -> RedirectRes
         token = await client.authorize_access_token(request)
     except OAuthError as exc:
         logger.warning("oauth_authorize_access_token_failed", provider=provider, error=str(exc))
-        frontend_base = settings.frontend_return_url_base or "http://localhost:3000"
+        frontend_base = settings.frontend_return_url_base or "https://xn--b1ahgb0aea5aq.online"
         return RedirectResponse(url=f"{frontend_base}/profile?auth_error={exc.error}&provider={provider}")
 
     userinfo: dict[str, Any] | None = None
@@ -52,7 +52,7 @@ async def _handle_oauth_callback(request: Request, provider: str) -> RedirectRes
             userinfo = resp.json() if resp else None
         except OAuthError as exc:
             logger.warning("oauth_userinfo_failed", provider=provider, error=str(exc))
-            frontend_base = settings.frontend_return_url_base or "http://localhost:3000"
+            frontend_base = settings.frontend_return_url_base or "https://xn--b1ahgb0aea5aq.online"
             return RedirectResponse(url=f"{frontend_base}/profile?auth_error=userinfo_failed&provider={provider}")
     elif provider == "vk":
         userinfo = {
@@ -61,7 +61,7 @@ async def _handle_oauth_callback(request: Request, provider: str) -> RedirectRes
             "access_token": token.get("access_token"),
         }
 
-    frontend_base = settings.frontend_return_url_base or "http://localhost:3000"
+    frontend_base = settings.frontend_return_url_base or "https://xn--b1ahgb0aea5aq.online"
     redirect_url = f"{frontend_base}/profile"
     return RedirectResponse(url=redirect_url)
 
