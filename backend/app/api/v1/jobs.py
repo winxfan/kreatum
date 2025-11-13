@@ -227,8 +227,23 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
             logger.warning("create_job: user not found user_id=%s", user_id)
             raise HTTPException(status_code=404, detail="User not found")
     else:
-        # Попробуем найти существующего по anon_user_id, иначе создадим
+        # Попробуем найти существующего по anon_user_id; если нет — по email; если нет — создадим
         user = db.query(User).filter(User.anon_user_id == anon_user_id).first()
+        if not user and email:
+            # Reuse пользователя с тем же email, чтобы не нарушать уникальность email
+            existing_by_email = db.query(User).filter(User.email == email).first()
+            if existing_by_email:
+                # Если у найденного пользователя нет anon_user_id и он не занят — проставим
+                if anon_user_id and not existing_by_email.anon_user_id:
+                    conflict = db.query(User).filter(User.anon_user_id == anon_user_id).first()
+                    if not conflict:
+                        existing_by_email.anon_user_id = anon_user_id
+                        try:
+                            db.commit()
+                            db.refresh(existing_by_email)
+                        except Exception:
+                            db.rollback()
+                user = existing_by_email
         if not user:
             user = User(
                 anon_user_id=anon_user_id,
@@ -237,8 +252,16 @@ def create_job(payload: dict, db: Session = Depends(get_db)) -> dict:
                 telegram_id=telegram_id,
             )
             db.add(user)
-            db.commit()
-            db.refresh(user)
+            try:
+                db.commit()
+                db.refresh(user)
+            except Exception:
+                # Возможная гонка/уникальность: попробуем ещё раз найти по email и использовать
+                db.rollback()
+                if email:
+                    user = db.query(User).filter(User.email == email).first()
+                if not user:
+                    raise
 
     # Получаем модель и её форматы
     model: Model | None = db.query(Model).filter(Model.id == model_id).first()
